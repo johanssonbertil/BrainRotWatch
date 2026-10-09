@@ -1,0 +1,7 @@
+# Copy this file to local.properties and fill in your Supabase credentials
+# local.properties is ignored by git and will never be committed to GitHub.
+
+sdk.dir=C\:\\Users\\YOUR_USERNAME\\AppData\\Local\\Android\\Sdk
+
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_ANON_KEY=your-actual-anon-key-here
