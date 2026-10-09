@@ -81,6 +81,9 @@ dependencies {
     // Image loading with Coil
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // QR Code generation
+    implementation("com.google.zxing:core:3.5.3")
+
     // Secure Storage / KeyStore
     implementation("androidx.security:security-crypto:1.1.0")
 

@@ -24,6 +24,12 @@ data class Friendship(
     val status: FriendStatus = FriendStatus.Accepted
 )
 
+data class IncomingFriendRequest(
+    val friendCode: String,
+    val displayName: String,
+    val avatarUrl: String? = null
+)
+
 enum class FriendStatus {
     Pending,
     Accepted,
@@ -80,6 +86,7 @@ data class UserScreenTime(
     val displayName: String,
     val initials: String,
     val avatarUrl: String? = null,
+    val friendCode: String = "",
     val totalMinutes: Int,
     val deltaMinutes: Int,
     val apps: List<AppUsage>,

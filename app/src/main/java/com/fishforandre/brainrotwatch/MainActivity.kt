@@ -4,6 +4,7 @@ import com.fishforandre.brainrotwatch.ui.theme.*
 
 import android.os.Bundle
 import android.content.Intent
+import android.graphics.Bitmap
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -20,6 +21,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Arrangement
@@ -99,18 +101,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.ui.window.Dialog
 import androidx.core.splashscreen.SplashScreen
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 
 class MainActivity : ComponentActivity() {
+    private var appStateRef: BrainRotWatchAppState? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         enableEdgeToEdge()
@@ -122,16 +128,34 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    BrainRotWatchEntry(splashScreen = splashScreen)
+                    BrainRotWatchEntry(
+                        splashScreen = splashScreen,
+                        onAppStateCreated = { appStateRef = it }
+                    )
                 }
             }
+        }
+
+        intent?.data?.let { uri ->
+            appStateRef?.handleDeepLink(uri)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.data?.let { uri ->
+            appStateRef?.handleDeepLink(uri)
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BrainRotWatchEntry(splashScreen: SplashScreen) {
+private fun BrainRotWatchEntry(
+    splashScreen: SplashScreen,
+    onAppStateCreated: (BrainRotWatchAppState) -> Unit = {}
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val appState = remember { BrainRotWatchAppState(context) }
@@ -153,6 +177,7 @@ private fun BrainRotWatchEntry(splashScreen: SplashScreen) {
     }
 
     LaunchedEffect(Unit) {
+        onAppStateCreated(appState)
         try {
             appState.checkAuthAndRoute()
             val response = supabase.from("communities").select()
@@ -163,6 +188,10 @@ private fun BrainRotWatchEntry(splashScreen: SplashScreen) {
         } catch (e: Exception) {
             android.util.Log.e("SupabaseTest", "ERROR: Connection failed - ${e.message}", e)
         }
+    }
+
+    BackHandler(enabled = appState.canGoBack) {
+        appState.popBack()
     }
 
     if (!appState.isCheckingAuth) {
@@ -176,7 +205,7 @@ private fun BrainRotWatchEntry(splashScreen: SplashScreen) {
 
                 AppScreen.DeviceSetup -> DeviceSetupScreen(
                     authRepository = appState.authRepository,
-                    onBack = { appState.navigateTo(AppScreen.Auth) },
+                    onBack = { appState.popBack() },
                     onSignedIn = appState::handleSignedIn
                 )
 
@@ -196,7 +225,7 @@ private fun BrainRotWatchEntry(splashScreen: SplashScreen) {
                 AppScreen.ManageCommunity -> CommunityManageScreen(
                     communityName = appState.selectedCommunity.name,
                     notifications = appState.notificationPreferences,
-                    onBack = { appState.navigateTo(AppScreen.Home) },
+                    onBack = { appState.popBack() },
                     onInvitePeople = { },
                     onDailySummaryChange = { enabled ->
                         appState.notificationPreferences = appState.notificationPreferences.copy(
@@ -220,7 +249,7 @@ private fun BrainRotWatchEntry(splashScreen: SplashScreen) {
                     initialAvatarUrl = appState.avatarUrl ?: appState.currentUser.avatarUrl,
                     initialMaxScreenTimeMinutes = appState.maxScreenTimeMinutes,
                     authRepository = appState.authRepository,
-                    onBack = { appState.navigateTo(AppScreen.Home) },
+                    onBack = { appState.popBack() },
                     onNameChange = appState::updateDisplayName,
                     onSaveProfile = { newName, newAvatarUrl ->
                         appState.updateUserProfile(newName, newAvatarUrl)
@@ -230,7 +259,7 @@ private fun BrainRotWatchEntry(splashScreen: SplashScreen) {
                 )
 
                 AppScreen.CreateCommunity -> CreateCommunityScreen(
-                    onBack = { appState.navigateTo(AppScreen.Home) },
+                    onBack = { appState.popBack() },
                     onCreateCommunity = { newCommunityName ->
                         appState.createCommunity(newCommunityName)
                     }
@@ -238,7 +267,7 @@ private fun BrainRotWatchEntry(splashScreen: SplashScreen) {
 
                 AppScreen.Events -> EventsScreen(
                     unreadCount = appState.unreadNotifications,
-                    onBack = { appState.navigateTo(AppScreen.Home) }
+                    onBack = { appState.popBack() }
                 )
 
                 else -> BrainRotWatchHome(
@@ -271,6 +300,7 @@ private fun BrainRotWatchHome(
     val context = LocalContext.current
     var showInviteOptionsSheet by remember { mutableStateOf(false) }
     var inviteOptionsTitle by remember { mutableStateOf("") }
+    var showQrCodeDialog by remember { mutableStateOf(false) }
 
     val userScreenTime by produceState(
         initialValue = appState.currentUser,
@@ -282,7 +312,8 @@ private fun BrainRotWatchHome(
             displayName = appState.displayName,
             initials = if (appState.displayName.isNotBlank()) appState.displayName.take(1).uppercase() else "J",
             fallbackSummary = appState.currentUser.summary,
-            avatarUrl = appState.avatarUrl ?: appState.currentUser.avatarUrl
+            avatarUrl = appState.avatarUrl ?: appState.currentUser.avatarUrl,
+            friendCode = appState.currentUser.friendCode
         )
         value = loaded
         appState.currentUser = loaded
@@ -291,6 +322,38 @@ private fun BrainRotWatchHome(
     val dashboard = SampleBrainRotWatchData.homeDashboard.copy(
         currentUser = userScreenTime
     )
+
+    // Handle Pending Incoming Friend Request from Deep Link / QR Code
+    val pendingRequest = appState.pendingIncomingFriendRequest
+    if (pendingRequest != null) {
+        FriendRequestDialog(
+            request = pendingRequest,
+            onAccept = {
+                val reqName = pendingRequest.displayName
+                appState.dismissIncomingFriendRequest()
+                android.widget.Toast.makeText(context, "Added $reqName as a friend!", android.widget.Toast.LENGTH_LONG).show()
+            },
+            onDismiss = {
+                appState.dismissIncomingFriendRequest()
+            }
+        )
+    }
+
+    if (showQrCodeDialog) {
+        ShowQrCodeDialog(
+            displayName = appState.displayName,
+            friendCode = appState.currentUser.friendCode,
+            avatarUrl = appState.avatarUrl ?: appState.currentUser.avatarUrl,
+            onDismiss = { showQrCodeDialog = false },
+            onShareLink = { inviteUrl ->
+                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                    putExtra(Intent.EXTRA_TEXT, "Add me on BrainRotWatch! $inviteUrl")
+                    type = "text/plain"
+                }
+                context.startActivity(Intent.createChooser(sendIntent, "Share BrainRotWatch Invite"))
+            }
+        )
+    }
 
     Scaffold(
         containerColor = Color.Transparent
@@ -339,13 +402,254 @@ private fun BrainRotWatchHome(
                 title = inviteOptionsTitle,
                 onDismissRequest = { showInviteOptionsSheet = false },
                 onShowQrCode = {
-                    android.widget.Toast.makeText(context, "Show QR Code clicked", android.widget.Toast.LENGTH_SHORT).show()
+                    showInviteOptionsSheet = false
+                    showQrCodeDialog = true
                 },
                 onSendInvite = {
-                    android.widget.Toast.makeText(context, "Send Invite clicked", android.widget.Toast.LENGTH_SHORT).show()
+                    showInviteOptionsSheet = false
+                    val friendCode = appState.currentUser.friendCode
+                    val inviteUrl = "https://brainrotwatch.app/friend?code=${friendCode.ifEmpty { "brw_friend" }}&name=${java.net.URLEncoder.encode(appState.displayName, "UTF-8")}&avatar=${java.net.URLEncoder.encode(appState.avatarUrl ?: "", "UTF-8")}"
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        putExtra(Intent.EXTRA_TEXT, "Add me on BrainRotWatch! $inviteUrl")
+                        type = "text/plain"
+                    }
+                    context.startActivity(Intent.createChooser(sendIntent, "Share BrainRotWatch Invite"))
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun FriendRequestDialog(
+    request: IncomingFriendRequest,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Requester Avatar Picture
+                Box(
+                    modifier = Modifier
+                        .size(88.dp)
+                        .border(2.5.dp, LogoTurquoise, CircleShape)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!request.avatarUrl.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = request.avatarUrl,
+                            contentDescription = "Friend Profile Picture",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().clip(CircleShape)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = "Avatar",
+                            tint = LogoTurquoise,
+                            modifier = Modifier.size(44.dp)
+                        )
+                    }
+                }
+
+                // Text Headline
+                Text(
+                    text = "${request.displayName} wants to add you as a friend",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = "They will be able to see your daily screen time and you will see theirs.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Action Buttons: "Not Right Now" and "Add Friend"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp),
+                        shape = CircleShape
+                    ) {
+                        Text("Not Right Now", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    Button(
+                        onClick = onAccept,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DarkButtonContainer,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("Add Friend", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = LogoTurquoise)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShowQrCodeDialog(
+    displayName: String,
+    friendCode: String,
+    avatarUrl: String?,
+    onDismiss: () -> Unit,
+    onShareLink: (String) -> Unit
+) {
+    val inviteUrl = remember(displayName, friendCode, avatarUrl) {
+        val codePart = friendCode.ifEmpty { "brw_friend" }
+        val namePart = java.net.URLEncoder.encode(displayName, "UTF-8")
+        val avatarPart = java.net.URLEncoder.encode(avatarUrl ?: "", "UTF-8")
+        "https://brainrotwatch.app/friend?code=$codePart&name=$namePart&avatar=$avatarPart"
+    }
+    val qrBitmap = remember(inviteUrl) { generateQrBitmap(inviteUrl, 512) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // User Avatar
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (!avatarUrl.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = avatarUrl,
+                            contentDescription = "Avatar",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().clip(CircleShape)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = "Avatar",
+                            tint = LogoTurquoise,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Text(
+                    text = "Scan this QR code with any camera to add as a friend",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                // QR Code Image
+                if (qrBitmap != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(200.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White)
+                            .padding(12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            bitmap = qrBitmap.asImageBitmap(),
+                            contentDescription = "Friend QR Code",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = CircleShape
+                    ) {
+                        Text("Close", fontWeight = FontWeight.SemiBold)
+                    }
+
+                    Button(
+                        onClick = { onShareLink(inviteUrl) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = DarkButtonContainer, contentColor = Color.White)
+                    ) {
+                        Text("Share Link", fontWeight = FontWeight.Bold, color = LogoTurquoise)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun generateQrBitmap(content: String, sizePx: Int = 512): Bitmap? {
+    return try {
+        val writer = com.google.zxing.qrcode.QRCodeWriter()
+        val bitMatrix = writer.encode(content, com.google.zxing.BarcodeFormat.QR_CODE, sizePx, sizePx)
+        val w = bitMatrix.width
+        val h = bitMatrix.height
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        for (x in 0 until w) {
+            for (y in 0 until h) {
+                bitmap.setPixel(x, y, if (bitMatrix.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }
+        }
+        bitmap
+    } catch (_: Exception) {
+        null
     }
 }
 
@@ -387,7 +691,6 @@ private fun InviteOptionsBottomSheet(
                 Button(
                     onClick = {
                         onShowQrCode()
-                        onDismissRequest()
                     },
                     modifier = Modifier
                         .weight(1f)
@@ -418,7 +721,6 @@ private fun InviteOptionsBottomSheet(
                 Button(
                     onClick = {
                         onSendInvite()
-                        onDismissRequest()
                     },
                     modifier = Modifier
                         .weight(1f)
@@ -467,7 +769,7 @@ private fun HomeTopBar(
         ) {
             Image(
                 painter = painterResource(id = R.drawable.final_logo_icon_only),
-                contentDescription = "BrainRotWatch Logo Icon",
+                contentDescription = "BrainRotWatch Logo",
                 modifier = Modifier.size(32.dp),
                 contentScale = ContentScale.Fit
             )
@@ -592,7 +894,7 @@ private fun CommunityHeader(
         isExpanded = false
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) { // There's a propensy to add this spacing here even when removed, this should not be here and therefore I've left it in as 0dp.
+    Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -657,7 +959,6 @@ private fun CommunityHeader(
             }
         }
 
-        // Dropdown Communities List (Appears between community name and contextual button when expanded)
         AnimatedVisibility(
             visible = isExpanded,
             enter = expandVertically() + fadeIn(),
@@ -694,7 +995,6 @@ private fun CommunityHeader(
             }
         }
 
-        // Contextual Action Button (Below Community Name when collapsed, below Expanded List when expanded)
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             horizontalArrangement = Arrangement.Start
@@ -711,9 +1011,6 @@ private fun CommunityHeader(
     }
 }
 
-
-
-
 @Composable
 private fun UserScrollCard(user: UserScreenTime) {
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -727,7 +1024,6 @@ private fun UserScrollCard(user: UserScreenTime) {
         Column(
             modifier = Modifier.padding(12.dp)
         ) {
-            // Top Row: Avatar + Display Name on Left, Info Icon on Right
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -780,7 +1076,6 @@ private fun UserScrollCard(user: UserScreenTime) {
                 }
             }
 
-            // Bottom Row: Screen time text on Bottom Right
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,

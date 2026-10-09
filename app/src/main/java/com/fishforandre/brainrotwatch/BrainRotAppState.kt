@@ -2,6 +2,7 @@ package com.fishforandre.brainrotwatch
 
 import android.content.Context
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
@@ -22,7 +23,13 @@ class BrainRotWatchAppState(private val context: Context) {
         com.fishforandre.brainrotwatch.data.SupabaseAuthRepository(context)
 
     var isCheckingAuth by mutableStateOf(true)
-    var currentScreen by mutableStateOf(AppScreen.Auth)
+    private val screenStack = mutableStateListOf<AppScreen>(AppScreen.Home)
+
+    val currentScreen: AppScreen
+        get() = screenStack.lastOrNull() ?: AppScreen.Home
+
+    val canGoBack: Boolean
+        get() = screenStack.size > 1
     var usageAccessGranted by mutableStateOf(DeviceUsageRepository.hasUsageAccess(context))
     var currentUser by mutableStateOf(SampleBrainRotWatchData.homeDashboard.currentUser)
     var selectedCommunity by mutableStateOf(SampleBrainRotWatchData.homeDashboard.community)
@@ -33,6 +40,26 @@ class BrainRotWatchAppState(private val context: Context) {
     var displayName by mutableStateOf(SampleBrainRotWatchData.homeDashboard.currentUser.displayName)
     var avatarUrl by mutableStateOf<String?>(null)
     var maxScreenTimeMinutes by mutableStateOf("180")
+    var pendingIncomingFriendRequest by mutableStateOf<IncomingFriendRequest?>(null)
+
+    fun handleDeepLink(uri: android.net.Uri?) {
+        if (uri == null) return
+        val friendCode = uri.getQueryParameter("code") ?: uri.getQueryParameter("friend_code")
+        val reqName = uri.getQueryParameter("name") ?: uri.getQueryParameter("display_name") ?: "BrainRotWatch User"
+        val reqAvatar = uri.getQueryParameter("avatar") ?: uri.getQueryParameter("avatar_url")
+
+        if (!friendCode.isNullOrBlank()) {
+            pendingIncomingFriendRequest = IncomingFriendRequest(
+                friendCode = friendCode,
+                displayName = reqName,
+                avatarUrl = reqAvatar
+            )
+        }
+    }
+
+    fun dismissIncomingFriendRequest() {
+        pendingIncomingFriendRequest = null
+    }
 
     suspend fun checkAuthAndRoute() {
         try {
@@ -100,7 +127,25 @@ class BrainRotWatchAppState(private val context: Context) {
     }
 
     fun navigateTo(screen: AppScreen) {
-        currentScreen = screen
+        if (screen == AppScreen.Home) {
+            screenStack.clear()
+            screenStack.add(AppScreen.Home)
+        } else if (screen == AppScreen.Auth) {
+            screenStack.clear()
+            screenStack.add(AppScreen.Auth)
+        } else {
+            if (currentScreen != screen) {
+                screenStack.add(screen)
+            }
+        }
+    }
+
+    fun popBack(): Boolean {
+        if (canGoBack) {
+            screenStack.removeAt(screenStack.lastIndex)
+            return true
+        }
+        return false
     }
 
     fun updateDisplayName(newName: String) {

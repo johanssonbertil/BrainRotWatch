@@ -127,6 +127,7 @@ object DeviceUsageRepository {
         initials: String,
         fallbackSummary: String,
         avatarUrl: String? = null,
+        friendCode: String = "",
     ): UserScreenTime {
         val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val packageManager = context.packageManager
@@ -157,6 +158,7 @@ object DeviceUsageRepository {
             displayName = displayName,
             initials = initials,
             avatarUrl = avatarUrl,
+            friendCode = friendCode,
             totalMinutes = totalMinutes,
             deltaMinutes = deltaMinutes,
             apps = apps.take(6).map { snapshot ->
