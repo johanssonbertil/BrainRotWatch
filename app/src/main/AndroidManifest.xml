@@ -44,20 +44,17 @@
                     android:scheme="brainrotwatch" />
             </intent-filter>
 
-            <intent-filter android:autoVerify="true">
+            <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data
-                    android:scheme="https"
-                    android:host="brainrotwatch.app"
-                    android:pathPrefix="/friend" />
-                <data
-                    android:scheme="https"
-                    android:host="brainrotwatch.app"
-                    android:pathPrefix="/join" />
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:host="brainrotwatch.app" />
+                <data android:pathPrefix="/friend" />
+                <data android:pathPrefix="/join" />
             </intent-filter>
 
             <intent-filter>
@@ -69,6 +66,9 @@
                 <data
                     android:scheme="brainrotwatch"
                     android:host="friend" />
+                <data
+                    android:scheme="brainrotwatch"
+                    android:host="join" />
             </intent-filter>
         </activity>
 

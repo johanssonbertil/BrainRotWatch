@@ -31,34 +31,92 @@ class BrainRotWatchAppState(private val context: Context) {
     val canGoBack: Boolean
         get() = screenStack.size > 1
     var usageAccessGranted by mutableStateOf(DeviceUsageRepository.hasUsageAccess(context))
-    var currentUser by mutableStateOf(SampleBrainRotWatchData.homeDashboard.currentUser)
-    var selectedCommunity by mutableStateOf(SampleBrainRotWatchData.homeDashboard.community)
+    var currentUser by mutableStateOf(DefaultBrainRotWatchData.emptyUserScreenTime)
+    var selectedCommunity by mutableStateOf(DefaultBrainRotWatchData.emptyDashboard.community)
     var selectedCommunityName by mutableStateOf(prefs.getString("last_community", "Friends") ?: "Friends")
-    var availableCommunities by mutableStateOf(listOf("Friends", "The Family", "Weekend Doomscrollers"))
-    var unreadNotifications by mutableStateOf(SampleBrainRotWatchData.homeDashboard.unreadNotifications)
+    var availableCommunities by mutableStateOf(listOf("Friends"))
+    var unreadNotifications by mutableStateOf(0)
     var notificationPreferences by mutableStateOf(sampleCommunityNotificationPreferences)
-    var displayName by mutableStateOf(SampleBrainRotWatchData.homeDashboard.currentUser.displayName)
+    var displayName by mutableStateOf("")
     var avatarUrl by mutableStateOf<String?>(null)
     var maxScreenTimeMinutes by mutableStateOf("180")
     var pendingIncomingFriendRequest by mutableStateOf<IncomingFriendRequest?>(null)
+    var pendingIncomingCommunityInvite by mutableStateOf<IncomingCommunityInvite?>(null)
+
+    val addedFriends = mutableStateListOf<UserScreenTime>()
+    val communityMembersMap = mutableMapOf<String, MutableList<UserScreenTime>>()
+
+    fun getMembersForSelectedCommunity(): List<UserScreenTime> {
+        val extraMembers = if (selectedCommunityName == "Friends") {
+            addedFriends
+        } else {
+            communityMembersMap[selectedCommunityName].orEmpty()
+        }
+        return (listOf(currentUser) + extraMembers)
+            .filter { it.displayName.isNotBlank() }
+            .distinctBy { it.displayName }
+            .sortedByDescending { it.totalMinutes }
+    }
 
     fun handleDeepLink(uri: android.net.Uri?) {
         if (uri == null) return
-        val friendCode = uri.getQueryParameter("code") ?: uri.getQueryParameter("friend_code")
-        val reqName = uri.getQueryParameter("name") ?: uri.getQueryParameter("display_name") ?: "BrainRotWatch User"
-        val reqAvatar = uri.getQueryParameter("avatar") ?: uri.getQueryParameter("avatar_url")
+        val path = uri.path ?: ""
+        val isCommunityJoin = path.contains("join") || uri.getQueryParameter("community") != null || uri.getQueryParameter("community_id") != null
 
-        if (!friendCode.isNullOrBlank()) {
-            pendingIncomingFriendRequest = IncomingFriendRequest(
-                friendCode = friendCode,
-                displayName = reqName,
-                avatarUrl = reqAvatar
+        if (isCommunityJoin) {
+            val commName = uri.getQueryParameter("community") ?: uri.getQueryParameter("name") ?: "New Community"
+            val commId = uri.getQueryParameter("community_id") ?: uri.getQueryParameter("id") ?: "comm_123"
+            val invCode = uri.getQueryParameter("code") ?: "inv_123"
+            val inviter = uri.getQueryParameter("inviter") ?: "A friend"
+
+            pendingIncomingCommunityInvite = IncomingCommunityInvite(
+                communityId = commId,
+                communityName = commName,
+                inviteCode = invCode,
+                inviterName = inviter
             )
+        } else {
+            val friendCode = uri.getQueryParameter("code") ?: uri.getQueryParameter("friend_code")
+            val reqName = uri.getQueryParameter("name") ?: uri.getQueryParameter("display_name") ?: "BrainRotWatch User"
+            val reqAvatar = uri.getQueryParameter("avatar") ?: uri.getQueryParameter("avatar_url")
+
+            if (!friendCode.isNullOrBlank()) {
+                pendingIncomingFriendRequest = IncomingFriendRequest(
+                    friendCode = friendCode,
+                    displayName = reqName,
+                    avatarUrl = reqAvatar
+                )
+            }
         }
     }
 
     fun dismissIncomingFriendRequest() {
         pendingIncomingFriendRequest = null
+    }
+
+    fun dismissIncomingCommunityInvite() {
+        pendingIncomingCommunityInvite = null
+    }
+
+    fun joinCommunity(communityName: String) {
+        val trimmed = communityName.trim()
+        if (trimmed.isNotBlank() && !availableCommunities.contains(trimmed)) {
+            availableCommunities = availableCommunities + trimmed
+        }
+        selectCommunity(if (trimmed.isNotBlank()) trimmed else communityName)
+        dismissIncomingCommunityInvite()
+    }
+
+    fun leaveCommunity(communityName: String) {
+        availableCommunities = availableCommunities.filter { !it.equals(communityName, ignoreCase = true) }
+        selectCommunity("Friends")
+        navigateTo(AppScreen.Home)
+    }
+
+    fun disbandCommunity(communityName: String) {
+        availableCommunities = availableCommunities.filter { !it.equals(communityName, ignoreCase = true) }
+        selectCommunity("Friends")
+        navigateTo(AppScreen.Home)
     }
 
     suspend fun checkAuthAndRoute() {
@@ -88,7 +146,8 @@ class BrainRotWatchAppState(private val context: Context) {
         currentUser = currentUser.copy(
             displayName = profile.displayName,
             initials = initials,
-            avatarUrl = profile.avatarUrl
+            avatarUrl = profile.avatarUrl,
+            deviceCount = profile.deviceCount
         )
         navigateTo(AppScreen.Home)
     }

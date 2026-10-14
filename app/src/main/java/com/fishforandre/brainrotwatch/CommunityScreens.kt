@@ -75,13 +75,90 @@ import java.io.File
 @Composable
 fun CommunityManageScreen(
     communityName: String,
+    isAdmin: Boolean = true,
     notifications: CommunityNotificationPreferences,
     onBack: () -> Unit,
     onInvitePeople: () -> Unit,
     onDailySummaryChange: (Boolean) -> Unit,
     onThresholdAlertsChange: (Boolean) -> Unit,
     onApprovalRequiredChange: (Boolean) -> Unit,
+    onLeaveCommunity: () -> Unit = {},
+    onDisbandCommunity: () -> Unit = {}
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var showLeaveConfirmDialog by remember { mutableStateOf(false) }
+    var showDisbandConfirmDialog by remember { mutableStateOf(false) }
+
+    if (showLeaveConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showLeaveConfirmDialog = false },
+            title = {
+                Text(
+                    text = "Leave $communityName?",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text("Are you sure you want to leave $communityName? You will no longer see members' screen time or receive notifications for this group.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showLeaveConfirmDialog = false
+                        onLeaveCommunity()
+                        android.widget.Toast.makeText(context, "Left $communityName", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text("Leave Group", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showDisbandConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDisbandConfirmDialog = false },
+            title = {
+                Text(
+                    text = "Disband $communityName?",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text("Are you sure you want to disband $communityName? This action is permanent and will remove all members from the group.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDisbandConfirmDialog = false
+                        onDisbandCommunity()
+                        android.widget.Toast.makeText(context, "Disbanded $communityName", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text("Disband Permanently", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDisbandConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     Scaffold(containerColor = Color.Transparent) { paddingValues ->
         Box(
             modifier = Modifier
@@ -90,7 +167,12 @@ fun CommunityManageScreen(
                 .padding(paddingValues)
                 .padding(20.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -143,10 +225,40 @@ fun CommunityManageScreen(
 
                         Button(
                             onClick = onInvitePeople,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().height(50.dp),
+                            shape = CircleShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = DarkButtonContainer,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text("Invite Members", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = LogoTurquoise)
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Leave Community Option
+                        OutlinedButton(
+                            onClick = { showLeaveConfirmDialog = true },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
                             shape = CircleShape
                         ) {
-                            Text("Invite People")
+                            Text("Leave Community", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Disband Community Option (Admin Only)
+                        if (isAdmin) {
+                            Button(
+                                onClick = { showDisbandConfirmDialog = true },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = CircleShape,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            ) {
+                                Text("Disband Community", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -294,6 +406,7 @@ fun UserSettingsScreen(
     }
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showSyncDevicesDialog by remember { mutableStateOf(false) }
 
     var name by remember { mutableStateOf(initialName) }
     var maxScreenTime by remember { mutableStateOf(initialMaxScreenTimeMinutes) }
@@ -584,9 +697,179 @@ fun UserSettingsScreen(
                         }
                     }
                 }
+
+                // Sync Devices & Account Merge Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "Sync Devices & Merge Profiles",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Text(
+                            text = "Link multiple devices to share screen time data under one profile, or merge two separately created profiles into one.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        OutlinedButton(
+                            onClick = { showSyncDevicesDialog = true },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            shape = CircleShape
+                        ) {
+                            Text("Sync Devices / Merge Account", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
         }
     }
+
+    if (showSyncDevicesDialog) {
+        val currentCode = authRepository?.authState?.value?.let {
+            if (it is com.fishforandre.brainrotwatch.data.AuthState.SignedIn) it.user.friendCode else ""
+        } ?: ""
+
+        SyncDevicesDialog(
+            currentSyncCode = currentCode,
+            authRepository = authRepository,
+            onSaveProfile = onSaveProfile,
+            onDismiss = { showSyncDevicesDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun SyncDevicesDialog(
+    currentSyncCode: String,
+    authRepository: com.fishforandre.brainrotwatch.data.AuthRepository?,
+    onSaveProfile: (String, String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var targetCodeText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    var successMsg by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Sync & Link Devices",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .padding(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Your Current Device Sync Code:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = currentSyncCode.ifEmpty { "X7K2M9" },
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Black,
+                        color = LogoTurquoise
+                    )
+                }
+
+                Text(
+                    text = "To merge or link with another profile, enter the 6-character Sync Code from your other device:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                OutlinedTextField(
+                    value = targetCodeText,
+                    onValueChange = { targetCodeText = it.uppercase() },
+                    label = { Text("Target Device Sync Code") },
+                    placeholder = { Text("e.g. A2B3C4") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                errorMsg?.let { err ->
+                    Text(
+                        text = err,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                successMsg?.let { msg ->
+                    Text(
+                        text = msg,
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (targetCodeText.isNotBlank()) {
+                        isLoading = true
+                        errorMsg = null
+                        scope.launch {
+                            val merged = authRepository?.mergeProfiles(targetCodeText.trim())
+                            isLoading = false
+                            if (merged != null) {
+                                onSaveProfile(merged.displayName, merged.avatarUrl)
+                                successMsg = "Devices linked successfully!"
+                                android.widget.Toast.makeText(context, "Devices linked successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            } else {
+                                errorMsg = "Could not find account with sync code: ${targetCodeText.trim()}"
+                            }
+                        }
+                    }
+                },
+                enabled = targetCodeText.isNotBlank() && !isLoading,
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DarkButtonContainer,
+                    contentColor = Color.White
+                )
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Link & Merge Account", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }
 
 data class CommunityNotificationPreferences(
@@ -650,12 +933,7 @@ fun EventsScreen(
                         )
 
                         Text(
-                            text = "• Alex exceeded daily limit (185 min today)",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "• Daily summary: Johan had the lowest screen time yesterday!",
+                            text = "No new notifications.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

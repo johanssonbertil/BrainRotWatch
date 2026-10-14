@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +59,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -656,6 +659,7 @@ private fun ProfileSetupPage(
 
     var tempUncroppedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showCropDialog by remember { mutableStateOf(false) }
+    var showLinkDialog by remember { mutableStateOf(false) }
 
     var savedCropScale by remember { mutableFloatStateOf(1f) }
     var savedCropOffset by remember { mutableStateOf(Offset.Zero) }
@@ -984,9 +988,120 @@ private fun ProfileSetupPage(
                         fontWeight = FontWeight.Bold
                     )
                 }
+
+                TextButton(
+                    onClick = { showLinkDialog = true },
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    Text(
+                        text = "Already created a profile on another device?",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = LogoTurquoise
+                    )
+                }
             }
         }
     }
+
+    if (showLinkDialog) {
+        LinkExistingDeviceDialog(
+            authRepository = authRepository,
+            onSignedIn = onSignedIn,
+            onDismiss = { showLinkDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun LinkExistingDeviceDialog(
+    authRepository: AuthRepository,
+    onSignedIn: (UserProfile) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var syncCodeText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMsg by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Sync Existing Profile",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Enter the 6-character Sync Code (or Friend Code) from your other device to link this phone to your profile.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = syncCodeText,
+                    onValueChange = { syncCodeText = it.uppercase() },
+                    label = { Text("6-Character Sync Code") },
+                    placeholder = { Text("e.g. X7K2M9") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = LogoTurquoise,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f),
+                        focusedLabelColor = LogoTurquoise,
+                        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                errorMsg?.let { err ->
+                    Text(
+                        text = err,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (syncCodeText.isNotBlank()) {
+                        isLoading = true
+                        errorMsg = null
+                        scope.launch {
+                            val profile = authRepository.linkDeviceBySyncCode(syncCodeText.trim())
+                            isLoading = false
+                            if (profile != null) {
+                                onDismiss()
+                                onSignedIn(profile)
+                            } else {
+                                errorMsg = "No matching account found. Check the sync code and try again."
+                            }
+                        }
+                    }
+                },
+                enabled = syncCodeText.isNotBlank() && !isLoading,
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = DarkButtonContainer,
+                    contentColor = Color.White
+                )
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Link & Sync Device", fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable

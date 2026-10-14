@@ -13,7 +13,8 @@ data class UserProfile(
     val displayName: String,
     val avatarUrl: String? = null,
     val friendCode: String = "",
-    val maxScreenTimeMinutes: Int = 120
+    val maxScreenTimeMinutes: Int = 120,
+    val deviceCount: Int = 1
 )
 
 data class Friendship(
@@ -28,6 +29,13 @@ data class IncomingFriendRequest(
     val friendCode: String,
     val displayName: String,
     val avatarUrl: String? = null
+)
+
+data class IncomingCommunityInvite(
+    val communityId: String,
+    val communityName: String,
+    val inviteCode: String,
+    val inviterName: String? = null
 )
 
 enum class FriendStatus {
@@ -87,6 +95,7 @@ data class UserScreenTime(
     val initials: String,
     val avatarUrl: String? = null,
     val friendCode: String = "",
+    val deviceCount: Int = 1,
     val totalMinutes: Int,
     val deltaMinutes: Int,
     val apps: List<AppUsage>,
@@ -101,59 +110,26 @@ data class AppUsage(
     val trackColor: Color
 )
 
-object SampleBrainRotWatchData {
-    val homeDashboard = HomeDashboard(
+object DefaultBrainRotWatchData {
+    val emptyUserScreenTime = UserScreenTime(
+        displayName = "",
+        initials = "",
+        avatarUrl = null,
+        friendCode = "",
+        deviceCount = 1,
+        totalMinutes = 0,
+        deltaMinutes = 0,
+        apps = emptyList(),
+        summary = "No screen time recorded yet today."
+    )
+
+    val emptyDashboard = HomeDashboard(
         community = CommunitySummary(
-            name = "The Family",
-            visibility = CommunityAccessType.Closed,
-            previewMembers = listOf(
-                CommunityPreviewMember(
-                    displayName = "Member A",
-                    note = "Placeholder community data for now",
-                    placeholderLabel = "Pending"
-                ),
-                CommunityPreviewMember(
-                    displayName = "Member B",
-                    note = "Placeholder community data for now",
-                    placeholderLabel = "Pending"
-                ),
-                CommunityPreviewMember(
-                    displayName = "Member C",
-                    note = "Placeholder community data for now",
-                    placeholderLabel = "Pending"
-                )
-            )
+            name = "Friends",
+            visibility = CommunityAccessType.Open,
+            previewMembers = emptyList()
         ),
-        currentUser = UserScreenTime(
-            displayName = "Johan",
-            initials = "J",
-            totalMinutes = 142,
-            deltaMinutes = -12,
-            apps = listOf(
-                AppUsage(
-                    name = "Instagram Reels",
-                    minutes = 48,
-                    fillFraction = 0.79f,
-                    accentColor = Color(0xFF6460FF),
-                    trackColor = Color(0xFFD9E7F5)
-                ),
-                AppUsage(
-                    name = "TikTok",
-                    minutes = 61,
-                    fillFraction = 1.0f,
-                    accentColor = Color(0xFF23C8D7),
-                    trackColor = Color(0xFFD9E7F5)
-                ),
-                AppUsage(
-                    name = "YouTube Shorts",
-                    minutes = 33,
-                    fillFraction = 0.54f,
-                    accentColor = Color(0xFFFF6D84),
-                    trackColor = Color(0xFFD9E7F5)
-                )
-            ),
-            summary = "142 min of screen time today: 61 on TikTok, 48 on Instagram Reels, and 33 on YouTube Shorts."
-        ),
-        unreadNotifications = 4
+        currentUser = emptyUserScreenTime,
+        unreadNotifications = 0
     )
 }

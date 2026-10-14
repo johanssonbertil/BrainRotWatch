@@ -26,6 +26,8 @@ interface AuthRepository {
     suspend fun hasDeviceAccount(): Boolean
     suspend fun signInWithDevice(): Boolean
     suspend fun registerDeviceAccount(displayName: String, avatarUrl: String?): UserProfile?
+    suspend fun linkDeviceBySyncCode(syncCode: String): UserProfile?
+    suspend fun mergeProfiles(targetSyncCode: String): UserProfile?
 }
 
 class SupabaseAuthRepository(private val context: Context? = null) : AuthRepository {
@@ -178,6 +180,55 @@ class SupabaseAuthRepository(private val context: Context? = null) : AuthReposit
 
         _authState.value = AuthState.SignedIn(profile)
         return profile
+    }
+
+    override suspend fun linkDeviceBySyncCode(syncCode: String): UserProfile? {
+        val trimmed = syncCode.trim().uppercase()
+        if (trimmed.isEmpty()) return null
+
+        _authState.value = AuthState.Loading
+        return try {
+            val existing = supabase.from("users")
+                .select {
+                    filter {
+                        eq("friend_code", trimmed)
+                    }
+                }.decodeList<UserProfileDto>()
+
+            if (existing.isNotEmpty()) {
+                val dto = existing.first()
+                val prefs = getPrefs()
+                prefs?.edit()
+                    ?.putString(KEY_DEVICE_USER_ID, dto.id)
+                    ?.putString(KEY_DEVICE_USER_NAME, dto.display_name)
+                    ?.putString(KEY_DEVICE_AVATAR_URL, dto.avatar_url)
+                    ?.putString(KEY_DEVICE_FRIEND_CODE, dto.friend_code)
+                    ?.putBoolean(KEY_DEVICE_SIGNED_IN, true)
+                    ?.apply()
+
+                val profile = UserProfile(
+                    id = dto.id,
+                    displayName = dto.display_name,
+                    avatarUrl = dto.avatar_url,
+                    friendCode = dto.friend_code,
+                    maxScreenTimeMinutes = dto.max_screen_time_minutes,
+                    deviceCount = 2
+                )
+
+                _authState.value = AuthState.SignedIn(profile)
+                profile
+            } else {
+                _authState.value = AuthState.Error("No account found with sync code: $trimmed")
+                null
+            }
+        } catch (e: Exception) {
+            _authState.value = AuthState.Error(e.message ?: "Failed to link device")
+            null
+        }
+    }
+
+    override suspend fun mergeProfiles(targetSyncCode: String): UserProfile? {
+        return linkDeviceBySyncCode(targetSyncCode)
     }
 
     override suspend fun signOut() {

@@ -37,12 +37,15 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Person
@@ -190,10 +193,6 @@ private fun BrainRotWatchEntry(
         }
     }
 
-    BackHandler(enabled = appState.canGoBack) {
-        appState.popBack()
-    }
-
     if (!appState.isCheckingAuth) {
         if (appState.currentScreen == AppScreen.Auth || appState.currentScreen == AppScreen.DeviceSetup) {
             when (appState.currentScreen) {
@@ -205,7 +204,7 @@ private fun BrainRotWatchEntry(
 
                 AppScreen.DeviceSetup -> DeviceSetupScreen(
                     authRepository = appState.authRepository,
-                    onBack = { appState.popBack() },
+                    onBack = { appState.navigateTo(AppScreen.Auth) },
                     onSignedIn = appState::handleSignedIn
                 )
 
@@ -223,9 +222,10 @@ private fun BrainRotWatchEntry(
                 )
 
                 AppScreen.ManageCommunity -> CommunityManageScreen(
-                    communityName = appState.selectedCommunity.name,
+                    communityName = appState.selectedCommunityName,
+                    isAdmin = true,
                     notifications = appState.notificationPreferences,
-                    onBack = { appState.popBack() },
+                    onBack = { appState.navigateTo(AppScreen.Home) },
                     onInvitePeople = { },
                     onDailySummaryChange = { enabled ->
                         appState.notificationPreferences = appState.notificationPreferences.copy(
@@ -242,6 +242,12 @@ private fun BrainRotWatchEntry(
                             approvalRequiredEnabled = enabled
                         )
                     },
+                    onLeaveCommunity = {
+                        appState.leaveCommunity(appState.selectedCommunityName)
+                    },
+                    onDisbandCommunity = {
+                        appState.disbandCommunity(appState.selectedCommunityName)
+                    }
                 )
 
                 AppScreen.Settings -> UserSettingsScreen(
@@ -249,7 +255,7 @@ private fun BrainRotWatchEntry(
                     initialAvatarUrl = appState.avatarUrl ?: appState.currentUser.avatarUrl,
                     initialMaxScreenTimeMinutes = appState.maxScreenTimeMinutes,
                     authRepository = appState.authRepository,
-                    onBack = { appState.popBack() },
+                    onBack = { appState.navigateTo(AppScreen.Home) },
                     onNameChange = appState::updateDisplayName,
                     onSaveProfile = { newName, newAvatarUrl ->
                         appState.updateUserProfile(newName, newAvatarUrl)
@@ -259,7 +265,7 @@ private fun BrainRotWatchEntry(
                 )
 
                 AppScreen.CreateCommunity -> CreateCommunityScreen(
-                    onBack = { appState.popBack() },
+                    onBack = { appState.navigateTo(AppScreen.Home) },
                     onCreateCommunity = { newCommunityName ->
                         appState.createCommunity(newCommunityName)
                     }
@@ -267,7 +273,7 @@ private fun BrainRotWatchEntry(
 
                 AppScreen.Events -> EventsScreen(
                     unreadCount = appState.unreadNotifications,
-                    onBack = { appState.popBack() }
+                    onBack = { appState.navigateTo(AppScreen.Home) }
                 )
 
                 else -> BrainRotWatchHome(
@@ -319,17 +325,22 @@ private fun BrainRotWatchHome(
         appState.currentUser = loaded
     }
 
-    val dashboard = SampleBrainRotWatchData.homeDashboard.copy(
+    val dashboard = DefaultBrainRotWatchData.emptyDashboard.copy(
         currentUser = userScreenTime
     )
 
+    // Dynamic community/friends list based on top header selection
+    val communityMembers = remember(appState.selectedCommunityName, dashboard.currentUser) {
+        appState.getMembersForSelectedCommunity()
+    }
+
     // Handle Pending Incoming Friend Request from Deep Link / QR Code
-    val pendingRequest = appState.pendingIncomingFriendRequest
-    if (pendingRequest != null) {
+    val pendingFriendRequest = appState.pendingIncomingFriendRequest
+    if (pendingFriendRequest != null) {
         FriendRequestDialog(
-            request = pendingRequest,
+            request = pendingFriendRequest,
             onAccept = {
-                val reqName = pendingRequest.displayName
+                val reqName = pendingFriendRequest.displayName
                 appState.dismissIncomingFriendRequest()
                 android.widget.Toast.makeText(context, "Added $reqName as a friend!", android.widget.Toast.LENGTH_LONG).show()
             },
@@ -339,15 +350,40 @@ private fun BrainRotWatchHome(
         )
     }
 
+    // Handle Pending Incoming Community Invite from Deep Link / QR Code
+    val pendingCommunityInvite = appState.pendingIncomingCommunityInvite
+    if (pendingCommunityInvite != null) {
+        CommunityInviteDialog(
+            invite = pendingCommunityInvite,
+            onJoin = {
+                val name = pendingCommunityInvite.communityName
+                appState.joinCommunity(name)
+                android.widget.Toast.makeText(context, "Joined $name!", android.widget.Toast.LENGTH_LONG).show()
+            },
+            onDismiss = {
+                appState.dismissIncomingCommunityInvite()
+            }
+        )
+    }
+
+    val isFriendsSelected = appState.selectedCommunityName.equals("Friends", ignoreCase = true)
+
     if (showQrCodeDialog) {
         ShowQrCodeDialog(
-            displayName = appState.displayName,
+            displayName = if (isFriendsSelected) appState.displayName else appState.selectedCommunityName,
             friendCode = appState.currentUser.friendCode,
             avatarUrl = appState.avatarUrl ?: appState.currentUser.avatarUrl,
+            isCommunityInvite = !isFriendsSelected,
+            communityName = appState.selectedCommunityName,
             onDismiss = { showQrCodeDialog = false },
             onShareLink = { inviteUrl ->
+                val textToShare = if (isFriendsSelected) {
+                    "Add me on BrainRotWatch! $inviteUrl"
+                } else {
+                    "Join ${appState.selectedCommunityName} on BrainRotWatch! $inviteUrl"
+                }
                 val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                    putExtra(Intent.EXTRA_TEXT, "Add me on BrainRotWatch! $inviteUrl")
+                    putExtra(Intent.EXTRA_TEXT, textToShare)
                     type = "text/plain"
                 }
                 context.startActivity(Intent.createChooser(sendIntent, "Share BrainRotWatch Invite"))
@@ -369,7 +405,12 @@ private fun BrainRotWatchHome(
                 .padding(paddingValues)
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 HomeTopBar(
                     dashboard = dashboard,
                     onOpenSettings = onOpenSettings,
@@ -382,7 +423,7 @@ private fun BrainRotWatchHome(
                     onSelectCommunity = { newName -> appState.selectCommunity(newName) },
                     onOpenManageCommunity = onOpenManageCommunity,
                     onOpenInviteMember = {
-                        inviteOptionsTitle = "Invite to Community"
+                        inviteOptionsTitle = "Invite to ${appState.selectedCommunityName}"
                         showInviteOptionsSheet = true
                     },
                     onOpenAddFriend = {
@@ -393,7 +434,11 @@ private fun BrainRotWatchHome(
                         appState.navigateTo(AppScreen.CreateCommunity)
                     }
                 )
-                UserScrollCard(dashboard.currentUser)
+
+                // Render screen time cards for all members of the currently selected community or friends list
+                communityMembers.forEach { member ->
+                    UserScrollCard(member)
+                }
             }
         }
 
@@ -408,14 +453,108 @@ private fun BrainRotWatchHome(
                 onSendInvite = {
                     showInviteOptionsSheet = false
                     val friendCode = appState.currentUser.friendCode
-                    val inviteUrl = "https://brainrotwatch.app/friend?code=${friendCode.ifEmpty { "brw_friend" }}&name=${java.net.URLEncoder.encode(appState.displayName, "UTF-8")}&avatar=${java.net.URLEncoder.encode(appState.avatarUrl ?: "", "UTF-8")}"
+                    val inviteUrl = if (isFriendsSelected) {
+                        "https://brainrotwatch.app/friend?code=${friendCode.ifEmpty { "brw_friend" }}&name=${java.net.URLEncoder.encode(appState.displayName, "UTF-8")}&avatar=${java.net.URLEncoder.encode(appState.avatarUrl ?: "", "UTF-8")}"
+                    } else {
+                        "https://brainrotwatch.app/join?community=${java.net.URLEncoder.encode(appState.selectedCommunityName, "UTF-8")}&inviter=${java.net.URLEncoder.encode(appState.displayName, "UTF-8")}"
+                    }
+                    val textToShare = if (isFriendsSelected) {
+                        "Add me on BrainRotWatch! $inviteUrl"
+                    } else {
+                        "Join ${appState.selectedCommunityName} on BrainRotWatch! $inviteUrl"
+                    }
                     val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                        putExtra(Intent.EXTRA_TEXT, "Add me on BrainRotWatch! $inviteUrl")
+                        putExtra(Intent.EXTRA_TEXT, textToShare)
                         type = "text/plain"
                     }
                     context.startActivity(Intent.createChooser(sendIntent, "Share BrainRotWatch Invite"))
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun CommunityInviteDialog(
+    invite: IncomingCommunityInvite,
+    onJoin: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(LogoTurquoise.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GroupAdd,
+                        contentDescription = "Community Invite",
+                        tint = LogoTurquoise,
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+
+                Text(
+                    text = "Join ${invite.communityName}?",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = "${invite.inviterName ?: "A friend"} invited you to join ${invite.communityName}. Your daily screen time will be visible to members of this group.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp),
+                        shape = CircleShape
+                    ) {
+                        Text("Not Right Now", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    Button(
+                        onClick = onJoin,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(50.dp),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = DarkButtonContainer,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("Join Group", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = LogoTurquoise)
+                    }
+                }
+            }
         }
     }
 }
@@ -440,7 +579,6 @@ private fun FriendRequestDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Requester Avatar Picture
                 Box(
                     modifier = Modifier
                         .size(88.dp)
@@ -466,7 +604,6 @@ private fun FriendRequestDialog(
                     }
                 }
 
-                // Text Headline
                 Text(
                     text = "${request.displayName} wants to add you as a friend",
                     style = MaterialTheme.typography.titleLarge,
@@ -484,7 +621,6 @@ private fun FriendRequestDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Action Buttons: "Not Right Now" and "Add Friend"
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -523,14 +659,20 @@ private fun ShowQrCodeDialog(
     displayName: String,
     friendCode: String,
     avatarUrl: String?,
+    isCommunityInvite: Boolean = false,
+    communityName: String = "",
     onDismiss: () -> Unit,
     onShareLink: (String) -> Unit
 ) {
-    val inviteUrl = remember(displayName, friendCode, avatarUrl) {
-        val codePart = friendCode.ifEmpty { "brw_friend" }
-        val namePart = java.net.URLEncoder.encode(displayName, "UTF-8")
-        val avatarPart = java.net.URLEncoder.encode(avatarUrl ?: "", "UTF-8")
-        "https://brainrotwatch.app/friend?code=$codePart&name=$namePart&avatar=$avatarPart"
+    val inviteUrl = remember(displayName, friendCode, avatarUrl, isCommunityInvite, communityName) {
+        if (isCommunityInvite) {
+            "https://brainrotwatch.app/join?community=${java.net.URLEncoder.encode(communityName, "UTF-8")}&inviter=${java.net.URLEncoder.encode(displayName, "UTF-8")}"
+        } else {
+            val codePart = friendCode.ifEmpty { "brw_friend" }
+            val namePart = java.net.URLEncoder.encode(displayName, "UTF-8")
+            val avatarPart = java.net.URLEncoder.encode(avatarUrl ?: "", "UTF-8")
+            "https://brainrotwatch.app/friend?code=$codePart&name=$namePart&avatar=$avatarPart"
+        }
     }
     val qrBitmap = remember(inviteUrl) { generateQrBitmap(inviteUrl, 512) }
 
@@ -548,7 +690,6 @@ private fun ShowQrCodeDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // User Avatar
                 Box(
                     modifier = Modifier
                         .size(64.dp)
@@ -556,7 +697,14 @@ private fun ShowQrCodeDialog(
                         .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (!avatarUrl.isNullOrEmpty()) {
+                    if (isCommunityInvite) {
+                        Icon(
+                            imageVector = Icons.Default.GroupAdd,
+                            contentDescription = "Community",
+                            tint = LogoTurquoise,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    } else if (!avatarUrl.isNullOrEmpty()) {
                         AsyncImage(
                             model = avatarUrl,
                             contentDescription = "Avatar",
@@ -574,20 +722,19 @@ private fun ShowQrCodeDialog(
                 }
 
                 Text(
-                    text = displayName,
+                    text = if (isCommunityInvite) "Invite to $communityName" else displayName,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Text(
-                    text = "Scan this QR code with any camera to add as a friend",
+                    text = if (isCommunityInvite) "Scan this QR code to join $communityName" else "Scan this QR code with any camera to add as a friend",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
 
-                // QR Code Image
                 if (qrBitmap != null) {
                     Box(
                         modifier = Modifier
@@ -599,7 +746,7 @@ private fun ShowQrCodeDialog(
                     ) {
                         Image(
                             bitmap = qrBitmap.asImageBitmap(),
-                            contentDescription = "Friend QR Code",
+                            contentDescription = "Invite QR Code",
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -769,16 +916,15 @@ private fun HomeTopBar(
         ) {
             Image(
                 painter = painterResource(id = R.drawable.final_logo_icon_only),
-                contentDescription = "BrainRotWatch Logo",
+                contentDescription = "BrainRotWatch Logo Icon",
                 modifier = Modifier.size(32.dp),
                 contentScale = ContentScale.Fit
             )
+            // CRITICAL: DO NOT REPLACE WITH COMPOSE Text()! ALWAYS USE R.drawable.final_logo_text_only FOR THE LOGO TEXT!
             Image(
                 painter = painterResource(id = R.drawable.final_logo_text_only),
-                contentDescription = "BrainRotWatch Text Logo",
-                modifier = Modifier
-                    .width(140.dp)
-                    .height(20.dp),
+                contentDescription = "BrainRotWatch Logo Text",
+                modifier = Modifier.height(22.dp),
                 contentScale = ContentScale.Fit
             )
         }
@@ -878,7 +1024,7 @@ private fun ContextualActionButton(
 @Composable
 private fun CommunityHeader(
     communityName: String,
-    availableCommunities: List<String> = listOf("Friends", "The Family", "Weekend Doomscrollers"),
+    availableCommunities: List<String> = listOf("Friends"),
     isInviteSheetOpen: Boolean = false,
     onSelectCommunity: (String) -> Unit = {},
     onOpenManageCommunity: () -> Unit = {},
@@ -1064,6 +1210,24 @@ private fun UserScrollCard(user: UserScreenTime) {
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    if (user.deviceCount > 1) {
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    shape = CircleShape
+                                )
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "${user.deviceCount} devices",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = LogoTurquoise
+                            )
+                        }
+                    }
                 }
 
                 IconButton(onClick = { expanded = !expanded }) {
@@ -1117,12 +1281,12 @@ private fun HomeTopBarPreview() {
         Box(modifier = Modifier.padding(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 HomeTopBar(
-                    dashboard = SampleBrainRotWatchData.homeDashboard
+                    dashboard = DefaultBrainRotWatchData.emptyDashboard
                 )
                 CommunityHeader(
-                    communityName = "The Family"
+                    communityName = "Friends"
                 )
-                UserScrollCard(user = SampleBrainRotWatchData.homeDashboard.currentUser)
+                UserScrollCard(user = DefaultBrainRotWatchData.emptyDashboard.currentUser)
             }
         }
     }
@@ -1135,12 +1299,12 @@ private fun FriendsTopBarPreview() {
         Box(modifier = Modifier.padding(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 HomeTopBar(
-                    dashboard = SampleBrainRotWatchData.homeDashboard
+                    dashboard = DefaultBrainRotWatchData.emptyDashboard
                 )
                 CommunityHeader(
                     communityName = "Friends"
                 )
-                UserScrollCard(user = SampleBrainRotWatchData.homeDashboard.currentUser)
+                UserScrollCard(user = DefaultBrainRotWatchData.emptyDashboard.currentUser)
             }
         }
     }
@@ -1151,7 +1315,7 @@ private fun FriendsTopBarPreview() {
 private fun UserScrollCardPreview() {
     BrainRotWatchTheme {
         Box(modifier = Modifier.padding(16.dp)) {
-            UserScrollCard(user = SampleBrainRotWatchData.homeDashboard.currentUser)
+            UserScrollCard(user = DefaultBrainRotWatchData.emptyDashboard.currentUser)
         }
     }
 }
