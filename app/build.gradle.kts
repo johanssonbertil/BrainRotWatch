@@ -52,6 +52,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 kotlin {
@@ -86,7 +92,7 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
 
     // CameraX for live QR Scanning
-    val cameraVersion = "1.3.4"
+    val cameraVersion = "1.4.1"
     implementation("androidx.camera:camera-camera2:$cameraVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraVersion")
     implementation("androidx.camera:camera-view:$cameraVersion")

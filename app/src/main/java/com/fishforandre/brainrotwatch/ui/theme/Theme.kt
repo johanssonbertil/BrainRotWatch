@@ -58,6 +58,13 @@ val AppBackgroundGradient = listOf(
     AppBackgroundEnd
 )
 
+/** Default background gradient for Friends List screen: gentle light blue to crisp white. */
+val FriendsListBackgroundGradient = listOf(
+    FriendsBackgroundStart,
+    FriendsBackgroundMid,
+    FriendsBackgroundEnd
+)
+
 @Composable
 fun BrainRotWatchTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

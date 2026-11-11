@@ -25,6 +25,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -320,10 +321,17 @@ private fun BrainRotWatchEntry(
                     isAdmin = true,
                     communitySettings = appState.getActiveCommunitySettings(appState.selectedCommunityName),
                     notifications = appState.notificationPreferences,
+                    inventory = appState.userInventory,
                     onBack = { appState.navigateTo(AppScreen.CommunityDetail) },
                     onInvitePeople = { },
                     onUpdateCommunitySettings = { updated ->
                         appState.updateCommunitySettings(appState.selectedCommunityName, updated)
+                    },
+                    onAssignPatronTheme = { themeId ->
+                        appState.assignPatronThemeToCommunity(themeId, appState.selectedCommunityName)
+                    },
+                    onUnequipPatronTheme = { themeId ->
+                        appState.unequipPatronTheme(themeId)
                     },
                     onDailySummaryChange = { enabled ->
                         appState.notificationPreferences = appState.notificationPreferences.copy(
@@ -578,10 +586,14 @@ fun HomeScreen(
         )
     }
 
+    val isDark = isSystemInDarkTheme()
+    val homeBackgroundColors = if (isDark) AppBackgroundGradient else FriendsListBackgroundGradient
+    val topBarBgColor = if (isDark) MaterialTheme.colorScheme.background else FriendsBackgroundStart
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(brush = Brush.verticalGradient(colors = AppBackgroundGradient))
+            .background(brush = Brush.verticalGradient(colors = homeBackgroundColors))
             .nestedScroll(nestedScrollConnection)
     ) {
         val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -591,7 +603,7 @@ fun HomeScreen(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = topContentPadding, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Optional Life-Line Intervention Result Banner
             appState.lastInterventionResultBanner?.let { bannerMsg ->
@@ -648,13 +660,7 @@ fun HomeScreen(
                     user = member,
                     rankNumber = index + 1,
                     enabledBadges = EnabledBadgesConfig(),
-                    isSelf = isSelf,
-                    onTacticalNudge = {
-                        appState.triggerTacticalNudge(member)
-                    },
-                    onCallLifeLine = {
-                        appState.triggerInterventionAction(member, InterventionType.PHONE_CALL, "DIAL")
-                    }
+                    isSelf = isSelf
                 )
             }
 
@@ -675,7 +681,7 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsTopHeight(WindowInsets.statusBars)
-                    .background(MaterialTheme.colorScheme.background)
+                    .background(topBarBgColor)
             )
 
             Box(
@@ -690,7 +696,7 @@ fun HomeScreen(
                         .graphicsLayer {
                             translationY = topBarOffsetHeightPx
                         }
-                        .background(MaterialTheme.colorScheme.background)
+                        .background(topBarBgColor)
                 ) {
                     Box(
                         modifier = Modifier
@@ -813,7 +819,7 @@ private fun LastVisitedCommunitiesBentoContainer(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 10.dp, bottom = 12.dp)
+            .padding(top = 18.dp, bottom = 12.dp)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(28.dp)),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(
@@ -878,9 +884,11 @@ private fun LastVisitedCommunitiesBentoContainer(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Footer: subtle `+` Add button on the far left, `Show all` with animated downwards arrow on the right
+            // Footer: subtle `+` Add button on the left (indented), `Show all` with animated downwards arrow on the right
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1230,15 +1238,13 @@ private fun FriendsLeaderboardHeaderRow(
 
         // Right: Dark squircle icon-only Add Button alongside Sort Dropdown (Best ↕)
         Row(
-            modifier = Modifier.height(IntrinsicSize.Max),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Dark squircle icon-only + Add Friend button (matches sorting button height)
+            // Dark squircle icon-only + Add Friend button (exact same height and width as sort button)
             Box(
                 modifier = Modifier
-                    .fillMaxHeight()
-                    .aspectRatio(1f)
+                    .size(38.dp)
                     .clip(RoundedCornerShape(13.dp))
                     .background(MaterialTheme.colorScheme.primary)
                     .clickable(onClick = onOpenAddFriendSheet),
@@ -1253,16 +1259,15 @@ private fun FriendsLeaderboardHeaderRow(
             }
 
             // Sort Dropdown Pill (Best ↕)
-            Box(modifier = Modifier.fillMaxHeight()) {
+            Box {
                 Row(
                     modifier = Modifier
-                        .heightIn(min = 38.dp)
-                        .fillMaxHeight()
+                        .height(38.dp)
                         .clip(RoundedCornerShape(13.dp))
                         .background(MaterialTheme.colorScheme.surface)
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(13.dp))
                         .clickable { sortMenuExpanded = true }
-                        .padding(horizontal = 13.dp, vertical = 8.dp),
+                        .padding(horizontal = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -1581,13 +1586,7 @@ private fun CommunityLeaderboardScreen(
                         user = member,
                         rankNumber = index + 1,
                         enabledBadges = badgeConfig,
-                        isSelf = member.userId == "current_user" || member.displayName.equals(appState.displayName, ignoreCase = true),
-                        onTacticalNudge = {
-                            appState.triggerTacticalNudge(member)
-                        },
-                        onCallLifeLine = {
-                            appState.triggerInterventionAction(member, InterventionType.PHONE_CALL, "DIAL")
-                        }
+                        isSelf = member.userId == "current_user" || member.displayName.equals(appState.displayName, ignoreCase = true)
                     )
                 }
             }
@@ -2270,9 +2269,7 @@ private fun UserScrollCard(
     user: UserScreenTime,
     rankNumber: Int = 1,
     enabledBadges: EnabledBadgesConfig = EnabledBadgesConfig(),
-    isSelf: Boolean = false,
-    onTacticalNudge: () -> Unit = {},
-    onCallLifeLine: () -> Unit = {}
+    isSelf: Boolean = false
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
@@ -2329,8 +2326,8 @@ private fun UserScrollCard(
                 .then(if (cardBrush != null) Modifier.background(cardBrush) else Modifier)
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (showRotFrame && rotFrame != null) {
                     Row(
@@ -2374,7 +2371,7 @@ private fun UserScrollCard(
                     }
                 }
 
-                // Primary compact leaderboard row: Rank (01) + Squircle Avatar + Name/Trend + Time/Devices + Chevron
+                // Primary leaderboard row: Rank (01) + Squircle Avatar + Name/Trend + Time/Devices + Chevron
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -2382,28 +2379,28 @@ private fun UserScrollCard(
                     // 2-digit rank number ("01", "02", ...)
                     Text(
                         text = rankNumber.toString().padStart(2, '0'),
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(26.dp)
+                        modifier = Modifier.width(28.dp)
                     )
 
                     // Rounded-square pastel avatar with corner online sync status dot
                     Box(
-                        modifier = Modifier.size(46.dp),
+                        modifier = Modifier.size(50.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(15.dp))
                                 .background(avatarPastel)
                                 .then(
                                     if (showRotFrame && rotFrame != null) {
                                         Modifier.border(
                                             2.dp,
                                             Color(rotFrame.stage.borderColorHex),
-                                            RoundedCornerShape(14.dp)
+                                            RoundedCornerShape(15.dp)
                                         )
                                     } else Modifier
                                 ),
@@ -2416,12 +2413,12 @@ private fun UserScrollCard(
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clip(RoundedCornerShape(14.dp))
+                                        .clip(RoundedCornerShape(15.dp))
                                 )
                             } else {
                                 Text(
                                     text = initialsText,
-                                    style = MaterialTheme.typography.titleSmall,
+                                    style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = NavyPrimary
                                 )
@@ -2433,22 +2430,23 @@ private fun UserScrollCard(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .offset(x = 2.dp, y = 2.dp)
-                                .size(13.dp)
+                                .size(14.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.surface)
-                                .padding(2.dp)
+                                .padding(2.5.dp)
                                 .clip(CircleShape)
                                 .background(syncDotColor)
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
 
-                    // Center column: Name + compact inline badges on top, colored trend subtitle below
+                    // Center column: Name + Title row on top, badges row, and colored trend subtitle below
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        // Row 1: Name + Nameplate Title
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -2466,30 +2464,6 @@ private fun UserScrollCard(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
-
-                            if (enabledBadges.showCrown && user.medalBreakdown?.isCrownHolder == true) {
-                                CompactIconBadge(
-                                    symbol = "🏆",
-                                    backgroundColor = AccentButter
-                                )
-                            } else if (enabledBadges.showRelativeReductionSpark && user.sparkResult?.isSparkHolder == true) {
-                                CompactIconBadge(
-                                    symbol = "✦",
-                                    backgroundColor = AccentLavender
-                                )
-                            } else if (enabledBadges.show30DayRollingWins && (user.medalBreakdown?.totalMedalsLast30Days ?: 0) > 0) {
-                                CompactIconBadge(
-                                    symbol = "🏅",
-                                    backgroundColor = AccentMint
-                                )
-                            }
-
-                            if (user.isAccountabilityBuddy) {
-                                CompactIconBadge(
-                                    symbol = "★",
-                                    backgroundColor = AccentPeach.copy(alpha = 0.55f)
-                                )
-                            }
 
                             loadout.baseCosmetics.nameplateTitle?.let { title ->
                                 Box(
@@ -2511,7 +2485,44 @@ private fun UserScrollCard(
                             }
                         }
 
-                        // Subtitle: compact arrow trend ("↓ 18% vs last week") or floor warning
+                        // Row 2: Status & achievement badges (given its own line to breathe)
+                        val hasBadges = (enabledBadges.showCrown && user.medalBreakdown?.isCrownHolder == true) ||
+                            (enabledBadges.showRelativeReductionSpark && user.sparkResult?.isSparkHolder == true) ||
+                            (enabledBadges.show30DayRollingWins && (user.medalBreakdown?.totalMedalsLast30Days ?: 0) > 0) ||
+                            user.isAccountabilityBuddy
+
+                        if (hasBadges) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (enabledBadges.showCrown && user.medalBreakdown?.isCrownHolder == true) {
+                                    CompactIconBadge(
+                                        symbol = "🏆",
+                                        backgroundColor = AccentButter
+                                    )
+                                } else if (enabledBadges.showRelativeReductionSpark && user.sparkResult?.isSparkHolder == true) {
+                                    CompactIconBadge(
+                                        symbol = "✦",
+                                        backgroundColor = AccentLavender
+                                    )
+                                } else if (enabledBadges.show30DayRollingWins && (user.medalBreakdown?.totalMedalsLast30Days ?: 0) > 0) {
+                                    CompactIconBadge(
+                                        symbol = "🏅",
+                                        backgroundColor = AccentMint
+                                    )
+                                }
+
+                                if (user.isAccountabilityBuddy) {
+                                    CompactIconBadge(
+                                        symbol = "★",
+                                        backgroundColor = AccentPeach.copy(alpha = 0.55f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Row 3: Subtitle - compact arrow trend ("↓ 18% vs last week") or floor warning
                         val trendText = remember(user.trendBadge, user.meetsMinimumActivityFloor) {
                             if (!user.meetsMinimumActivityFloor) {
                                 "⚠️ Below Touch Grass floor"
@@ -2536,28 +2547,28 @@ private fun UserScrollCard(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
 
                     // Right column: Total time ("42m" / "1h 08m") on top, device count ("📱 2") below
                     Column(
                         horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
                             text = formatUsageTime(user.totalMinutes),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Black,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Smartphone,
                                 contentDescription = "Connected devices",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(12.dp)
+                                modifier = Modifier.size(13.dp)
                             )
                             Text(
                                 text = user.deviceCount.toString(),
@@ -2568,7 +2579,7 @@ private fun UserScrollCard(
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     Icon(
                         imageVector = if (expanded) {
@@ -2590,7 +2601,7 @@ private fun UserScrollCard(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 6.dp),
+                            .padding(top = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         // Secondary achievement badges row when expanded
@@ -2709,56 +2720,6 @@ private fun UserScrollCard(
                                     user.apps.forEach { usage ->
                                         UsageRow(usage)
                                     }
-                                }
-                            }
-                        }
-
-                        if (!isSelf) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Button(
-                                    onClick = onTacticalNudge,
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.NotificationsActive,
-                                        contentDescription = "Tactical Nudge",
-                                        tint = AccentLime,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Tactical Nudge",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-
-                                OutlinedButton(
-                                    onClick = onCallLifeLine,
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(14.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Call,
-                                        contentDescription = "Call Life-Line",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Call (Life-Line)",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
                                 }
                             }
                         }

@@ -84,6 +84,8 @@ import com.fishforandre.brainrotwatch.domain.model.MediaTrackingMode
 import com.fishforandre.brainrotwatch.domain.model.NotificationAudience
 import com.fishforandre.brainrotwatch.domain.model.PersonalSettings
 import com.fishforandre.brainrotwatch.domain.model.SimpleLocalTime
+import com.fishforandre.brainrotwatch.domain.model.ThemeId
+import com.fishforandre.brainrotwatch.domain.model.UserInventory
 import com.fishforandre.brainrotwatch.domain.model.WrapUpSchedule
 import com.fishforandre.brainrotwatch.ui.theme.AppBackgroundGradient
 import kotlinx.coroutines.launch
@@ -95,6 +97,7 @@ import kotlin.math.roundToInt
  * - Tracked Apps Filter (from master global Brain Rot list or all)
  * - MediaTrackingMode (SCREEN_ONLY, SCREEN_AND_AUDIO, AUDIO_ONLY_BE_PRESENT)
  * - Limit Mode (IndividualSharedLimit vs. WeeklyGroupPact with Shared Pool & Targeted Trophy)
+ * - Community Theme (Patron Themes from inventory / catalog)
  * - Curfew Blackout Window (start/end hours)
  * - Notification Triggers & Wrap-Up Schedule (DAILY / WEEKLY / NONE)
  * - Leaderboard Badge Toggles (Crown, 30-day Rolling Wins, Spark, Progressive Rot Frames)
@@ -107,9 +110,12 @@ fun CommunityManageScreen(
     isAdmin: Boolean = true,
     communitySettings: CommunitySettings = CommunitySettings(),
     notifications: CommunityNotificationPreferences = sampleCommunityNotificationPreferences,
+    inventory: UserInventory = UserInventory(userId = "current_user"),
     onBack: () -> Unit,
     onInvitePeople: () -> Unit,
     onUpdateCommunitySettings: (CommunitySettings) -> Unit = {},
+    onAssignPatronTheme: (ThemeId) -> Result<Unit> = { Result.success(Unit) },
+    onUnequipPatronTheme: (ThemeId) -> Unit = {},
     onDailySummaryChange: (Boolean) -> Unit = {},
     onThresholdAlertsChange: (Boolean) -> Unit = {},
     onApprovalRequiredChange: (Boolean) -> Unit = {},
@@ -470,7 +476,269 @@ fun CommunityManageScreen(
                     }
                 }
 
-                // 4. Curfew Blackout Window & Notification Schedule
+                // 4. Community Theme (Patron Themes)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Text(
+                            text = "Community Theme",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Equip an owned Patron Theme or Trophy to customize the color scheme and header for all members of $communityName. Only one community can use each theme at a time (1-to-1 Lock Rule).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        // Option A: Default Theme (no patron theme active)
+                        val isDefaultActive = settingsState.activeThemeId == null
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    if (isDefaultActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                )
+                                .border(
+                                    width = if (isDefaultActive) 1.5.dp else 1.dp,
+                                    color = if (isDefaultActive) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .clickable {
+                                    val currentThemeId = settingsState.activeThemeId
+                                    if (currentThemeId != null) {
+                                        onUnequipPatronTheme(currentThemeId)
+                                    }
+                                    pushSettings(
+                                        settingsState.copy(
+                                            activeThemeId = null,
+                                            patronUserId = null,
+                                            patronUsername = null
+                                        )
+                                    )
+                                    android.widget.Toast.makeText(context, "Community reset to Default Theme", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFE2E8F0))
+                                )
+                                Column {
+                                    Text(
+                                        text = "Default Minimal Theme",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Clean standard styling without custom gradients",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            if (isDefaultActive) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        // Option B: Owned Themes
+                        val themesToShow = if (inventory.ownedThemes.isNotEmpty()) inventory.ownedThemes else MasterCatalog.availableThemes
+                        themesToShow.forEach { theme ->
+                            val isSelected = settingsState.activeThemeId == theme.themeId
+                            val assignedComm = inventory.patronAssignments[theme.themeId]
+                            val accentColor = Color(theme.accentColorHex)
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(
+                                        width = if (isSelected) 2.dp else 1.dp,
+                                        color = if (isSelected) accentColor else MaterialTheme.colorScheme.outlineVariant,
+                                        shape = RoundedCornerShape(18.dp)
+                                    ),
+                                shape = RoundedCornerShape(18.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isSelected) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(CircleShape)
+                                                    .background(
+                                                        Brush.linearGradient(
+                                                            theme.gradientColorsHex.map { Color(it) }
+                                                        )
+                                                    )
+                                                    .border(1.5.dp, accentColor, CircleShape)
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = theme.name,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = theme.description,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "Equipped",
+                                                tint = accentColor
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (isSelected) {
+                                            Text(
+                                                text = "Active in $communityName (Patron: ${settingsState.patronUsername ?: "You"})",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = accentColor
+                                            )
+                                            OutlinedButton(
+                                                onClick = {
+                                                    onUnequipPatronTheme(theme.themeId)
+                                                    pushSettings(
+                                                        settingsState.copy(
+                                                            activeThemeId = null,
+                                                            patronUserId = null,
+                                                            patronUsername = null
+                                                        )
+                                                    )
+                                                    android.widget.Toast.makeText(context, "Unequipped '${theme.name}'", android.widget.Toast.LENGTH_SHORT).show()
+                                                },
+                                                shape = CircleShape
+                                            ) {
+                                                Text("Unequip", style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        } else if (assignedComm != null && assignedComm != communityName) {
+                                            Text(
+                                                text = "Slotted in $assignedComm (Locked)",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    onUnequipPatronTheme(theme.themeId)
+                                                    val res = onAssignPatronTheme(theme.themeId)
+                                                    if (res.isSuccess) {
+                                                        pushSettings(
+                                                            settingsState.copy(
+                                                                activeThemeId = theme.themeId,
+                                                                patronUserId = "current_user",
+                                                                patronUsername = "You"
+                                                            )
+                                                        )
+                                                        android.widget.Toast.makeText(context, "Moved '${theme.name}' to $communityName!", android.widget.Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        android.widget.Toast.makeText(context, res.exceptionOrNull()?.message ?: "Could not assign theme", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                shape = CircleShape,
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = DarkButtonContainer,
+                                                    contentColor = Color.White
+                                                )
+                                            ) {
+                                                Text(
+                                                    text = "Move Here",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = LogoTurquoise,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        } else {
+                                            Text(
+                                                text = "Available in Inventory",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Button(
+                                                onClick = {
+                                                    val res = onAssignPatronTheme(theme.themeId)
+                                                    if (res.isSuccess) {
+                                                        pushSettings(
+                                                            settingsState.copy(
+                                                                activeThemeId = theme.themeId,
+                                                                patronUserId = "current_user",
+                                                                patronUsername = "You"
+                                                            )
+                                                        )
+                                                        android.widget.Toast.makeText(context, "Equipped '${theme.name}' to $communityName!", android.widget.Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        android.widget.Toast.makeText(context, res.exceptionOrNull()?.message ?: "Could not assign theme", android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                shape = CircleShape,
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = DarkButtonContainer,
+                                                    contentColor = Color.White
+                                                )
+                                            ) {
+                                                Text(
+                                                    text = "Equip Theme",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = LogoTurquoise,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 5. Curfew Blackout Window & Notification Schedule
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),

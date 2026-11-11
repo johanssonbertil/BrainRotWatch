@@ -13,6 +13,12 @@ val AvatarTextDark = Color(0xFF141416)
 val AppBackgroundLight = Color(0xFFF6F5F1)
 val AppBackgroundMid = Color(0xFFF6F5F1)
 val AppBackgroundEnd = Color(0xFFF3F1EC)
+
+// Friends List Default Background Gradient (Light Blue to Crisp White)
+val FriendsBackgroundStart = Color(0xFFE8F3FF)
+val FriendsBackgroundMid = Color(0xFFF4F8FC)
+val FriendsBackgroundEnd = Color(0xFFFFFFFF)
+
 val CardBackground = Color(0xFFFFFFFF)
 val PaperSunken = Color(0xFFF0EEE8)
 val HairlineBorder = Color(0xFFE8E6E0)

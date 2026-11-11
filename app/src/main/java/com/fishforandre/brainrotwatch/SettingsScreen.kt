@@ -57,7 +57,7 @@ import com.fishforandre.brainrotwatch.ui.theme.AppBackgroundGradient
  * Inventory & Loadout Manager Screen:
  * - Manage Global User Card Loadout (background, border, nameplate)
  * - Configure Per-Community Card Overrides (including earned Group Pact Trophy borders)
- * - Manage active 1-to-1 Patron Theme Slot assignments with strict lock enforcement
+ * - Permanent Gamification Trophies & Milestones
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -65,8 +65,8 @@ fun InventoryAndLoadoutScreen(
     inventory: UserInventory,
     availableCommunities: List<String>,
     onBack: () -> Unit,
-    onAssignPatronTheme: (ThemeId, String) -> Result<Unit>,
-    onUnequipPatronTheme: (ThemeId) -> Unit,
+    onAssignPatronTheme: ((ThemeId, String) -> Result<Unit>)? = null,
+    onUnequipPatronTheme: ((ThemeId) -> Unit)? = null,
     onUpdateGlobalLoadout: (CardCosmetics) -> Unit,
     onUpdateCommunityOverride: (String, CardCosmetics?) -> Unit
 ) {
@@ -108,7 +108,7 @@ fun InventoryAndLoadoutScreen(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Permanent Account Cosmetics & 1-to-1 Patron Slots",
+                            text = "Permanent Account Cosmetics & Custom Card Loadouts",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -133,159 +133,7 @@ fun InventoryAndLoadoutScreen(
                     }
                 }
 
-                // 1. 1-to-1 Patron Theme Slot Assignments
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = "1-to-1 Patron Theme Slots",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Each owned Community Theme can only be slotted into ONE Community at a time (1-to-1 Lock Rule). Unequip first to move to another group.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        inventory.ownedThemes.forEach { theme ->
-                            val assignedComm = inventory.patronAssignments[theme.themeId]
-                            val accentColor = Color(theme.accentColorHex)
-
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .border(
-                                        width = if (assignedComm != null) 2.dp else 1.dp,
-                                        color = if (assignedComm != null) accentColor else MaterialTheme.colorScheme.outlineVariant,
-                                        shape = RoundedCornerShape(18.dp)
-                                    ),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(28.dp)
-                                                    .clip(CircleShape)
-                                                    .background(
-                                                        Brush.linearGradient(
-                                                            theme.gradientColorsHex.map { Color(it) }
-                                                        )
-                                                    )
-                                                    .border(1.5.dp, accentColor, CircleShape)
-                                            )
-                                            Column {
-                                                Text(
-                                                    text = theme.name,
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                                Text(
-                                                    text = theme.description,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    if (assignedComm != null) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Lock,
-                                                    contentDescription = "Locked",
-                                                    tint = accentColor,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                                Text(
-                                                    text = "Slotted into: $assignedComm",
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = accentColor
-                                                )
-                                            }
-                                            OutlinedButton(
-                                                onClick = {
-                                                    onUnequipPatronTheme(theme.themeId)
-                                                    statusFeedback = "Unequipped '${theme.name}' from $assignedComm."
-                                                },
-                                                shape = CircleShape
-                                            ) {
-                                                Text("Unequip Slot", style = MaterialTheme.typography.labelSmall)
-                                            }
-                                        }
-                                    } else {
-                                        Text(
-                                            text = "Available to slot into a Community:",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            nonFriendCommunities.forEach { commName ->
-                                                Button(
-                                                    onClick = {
-                                                        val res = onAssignPatronTheme(theme.themeId, commName)
-                                                        statusFeedback = if (res.isSuccess) {
-                                                            "Equipped '${theme.name}' to $commName! Header now credits you as Patron."
-                                                        } else {
-                                                            res.exceptionOrNull()?.message ?: "Could not assign theme."
-                                                        }
-                                                    },
-                                                    shape = CircleShape,
-                                                    colors = ButtonDefaults.buttonColors(
-                                                        containerColor = DarkButtonContainer,
-                                                        contentColor = Color.White
-                                                    )
-                                                ) {
-                                                    Text(
-                                                        text = "Equip to $commName",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = LogoTurquoise,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 2. Global Default User Card Loadout
+                // 1. Global Default User Card Loadout
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
