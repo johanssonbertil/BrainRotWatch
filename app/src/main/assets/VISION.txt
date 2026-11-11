@@ -1,0 +1,142 @@
+1. Core Concept & Global Data Architecture
+The app turns reducing screen time and constant media consumption into a multiplayer social accountability game.
+
+Single Source of Truth: Users cannot manually choose or disable which apps are tracked on their own devices. The app tracks a curated global list of "Brain Rot" apps (short-form video, social media, addictive games) and audio media in the background at all times.
+
+Lenses Over Data: The Friends List and Communities act as different filters and rulesets over this master dataset. While a user cannot turn off tracking, Communities can filter which specific apps or media types count toward that group's scoreboard.
+
+Data is tracked and the last 3 month is kept on a database unless the user pays for premium, in which case all time is kept.
+
+2. Social Graph: Friends vs. Communities
+The Friends List (1-to-1 Asymmetric Graph)
+Visibility: You see all of your added friends on a unified list, but your friends cannot see each other unless they are also mutually friends.
+
+Governed by Personal Settings: What your friends see and what alerts they receive about you are strictly controlled by your personal privacy and notification settings.
+
+Accountability Buddies (Close Friends): A designated subset of your Friends list who can receive high-priority alerts when you hit personal limits.
+
+Communities (Shared Group Graph)
+Visibility: Every member of a Community can see every other member on that Community's leaderboard, regardless of whether they are friends on the app.
+
+Governed by Community Rules: The Community Creator defines the tracking rules, visibility overrides, and notification triggers for the group. Changes to a community's settings can be done by any member but have to be approved by a true majority after the community has been created.
+
+Entry Consent: Because Community rules can override personal privacy settings (e.g., mandatory limit notifications), joining a Community displays an explicit "Community Rules" prompt outlining what data and alerts are shared with the group.
+
+3. User List UI & Expandable Breakdowns
+Each user row in the Friends List or a Community Leaderboard displays at-a-glance accountability metrics:
+
+Total Brain Rot Time: The user's cumulative tracked time for the day (filtered by the Community's tracked app selection, or global for the Friends list).
+
+Behavioral Trend Highlight: A dynamic comparison badge showing momentum (e.g., "Down 18% from last week's avg", "Up 50% from yesterday", or "Down 12% from yesterday").
+
+Connected Devices Count: An icon displaying how many devices (e.g., phone + tablet) the user has linked to their account, alongside a live sync status indicator.
+
+Expandable App Drawer: By default, tapping a user's row expands it to show the exact breakdown of which apps they spent their time on. Depending on the user's privacy setting, this view displays one of three states:
+
+Full Breakdown (Default): Exact apps and minutes per app.
+
+Category Masking: Grouped totals (e.g., "Social Media: 1h 45m, Games: 30m") without naming specific apps.
+
+Total Time Only: The drawer remains locked, showing only the top-level daily total.
+
+4. Personal Settings & Limits
+Personal settings apply to a user's general Friends List:
+
+Personal Screen Time Limit: Users set a daily time cap and receive a warning notification when approaching their limit.
+
+Limit Breach Action: Users configure what happens when they cross their personal limit:
+
+Send a notification to All Friends.
+
+Send a notification only to Accountability Buddies (Close Friends).
+
+Keep it private (self-notification only).
+
+Privacy Toggles (Friends List Only):
+
+Allow friends to receive notifications about me? (Yes / Buddies Only / No)
+
+App Breakdown Visibility: (Full App Names / Categories Only / Total Time Only)
+
+5. Community Configuration (Creator Settings)
+When creating or managing a Community, the Creator configures the group's ruleset:
+
+Tracked Apps Filter: Creators can track the full global list of Brain Rot apps or narrow the Community's focus to specific vices (e.g., a "TikTok Detox" community that only scores TikTok time).
+
+Media Mode (Screen vs. Audio):
+
+Screen Time Only (Default): Tracks active visual screen time on Brain Rot apps.
+
+Screen + Audio Time: Includes background audio time alongside visual screen time.
+
+Audio-Only ("Be Present" / Earbud Detox Mode): Specifically tracks time spent with media playing through headphones or speakers (podcasts, music, audiobooks) for friend groups trying to break the habit of constant background noise and stay present in daily life.
+
+Limit Modes:
+
+Individual Shared Limit: Every member is held to the same daily cap (e.g., 1 hour/day).
+
+Weekly Group Pact Mode (Shared Health Bar): The entire Community shares a single pooled hour budget for the week. A visual battery/health bar pinned to the top of the Community screen drains in real time, color-coded by each member's contribution.
+
+Notification Triggers: Toggle whether the whole Community is alerted when a member hits their daily limit, and configure automated Daily or Weekly Wrap-Up Notifications announcing the top and bottom performers.
+
+Leaderboard & Badge Toggles: Configure whether the Crown, Relative Reduction badge, 30-Day Rolling Win Counter, and Brain Rot avatar frames are displayed.
+
+6. Social Friction, Nudges & Real-World Interventions
+When a user hits their limit or spikes in usage, notifications sent to Friends or Community members include interactive action buttons:
+
+Tactical Nudge Reactions: Friends can tap a quick-action button directly on the notification to send a playful visual poke, meme, or sound effect (e.g., "Caught in 4K", "Go touch grass") that pops up on the scrolling user's screen.
+
+Direct Call & Message Deep-Links: Notifications feature explicit prompts—"[Name] has hit their limit. Give them a call" or "Nudge with a message"—that trigger native phone calls or texts with one tap.
+
+The "First Responder" Badge: Members who tap a limit notification to call or text a struggling friend within 5 minutes earn First Responder points, displayed as a supportive badge on their Community profile.
+
+7. Gamification, Scoring & Playful Consequences
+Communities support multiple simultaneous recognition tracks so both naturally low-usage members and recovering heavy scrollers stay motivated:
+
+The Crown (Consistency Leader): Awarded based on the number of days a user has recorded the lowest screen time in the Community (rather than the lowest cumulative time, so one bad day doesn't ruin a month of discipline). This is calculated based on top three placements, if the user records the lowest screen time one day that's 3 points, second-lowest screen time is 2 points, and third-lowest screen time is one point.
+
+30-Day Rolling Win Counter: Displayed alongside the current Crown holder, showing "X medals in the last 30 days" (where an expanded user card shows the specific medals), this way the leaderboard stays competitive year-round.
+
+Relative Reduction Badge ("The Spark" / Most Improved): Awarded to the user with the steepest percentage drop compared to their own rolling baseline. Can be active simultaneously with the Crown.
+
+Progressive "Brain Rot" Avatar Frames: Instead of calling the highest scroller a "loser," the bottom performer in a daily or weekly cycle receives a funny, playful avatar frame (e.g., a sprouting mushroom, TV-static glasses, a zombie tint, or buzzing flies) that intensifies if they stay at the bottom for consecutive weeks.
+
+The "Carry" vs. "Anchor" Weekly Summary: At the end of a Weekly Group Pact, the wrap-up card highlights the "Carry" (the member who conserved the most shared pool budget) and the "Anchor" (the member who drained the largest share of the health bar).
+
+8. Freemium Monetization, Patron System & Cosmetics
+All real-money purchases are permanently bound to the individual user's account inventory rather than to a specific Community, ensuring users never lose paid items if a group disbands. Cosmetics are divided into Community-wide upgrades and Individual User Card customizations, split across paid and earned tracks:
+
+A. Community Cosmetics: The "Patron Slot" vs. Trophy Unlocks
+Communities can customize their group screen with background themes (e.g., Zen Garden, Alpine Peak, Cyberpunk), collective streak banners, and custom group nudge packs through two distinct pathways:
+
+Paid Community Themes & The Single-Assign Patron Slot: Users who purchase a Community Theme (or unlock a free theme selection via a Premium Subscription) hold that item in their personal inventory, governed by a strict 1-to-1 Lock Rule:
+
+Exclusive Allocation: Each owned theme or Patron Slot can only be equipped to one Community at a time. If a user equips their Cyberpunk theme onto Community A, it is locked to Community A and cannot be used simultaneously in Community B or C unless they unequip it from Community A first (or purchase an additional slot/theme).
+
+Social Flex ("Themed by @User"): Whenever a user equips a paid theme to a Community, a header badge credits them at the top of the group screen ("Theme provided by @[Username]").
+
+Zero Loss on Disband: If the Community is deleted or the Patron leaves, the theme automatically returns to their personal inventory, ready to be slotted into another group.
+
+Earned "Trophy Themes" (Group-Bound & Unbuyable): Certain exclusive themes and banners cannot be bought with real money and must be earned through sustained Weekly Group Pact survival:
+
+2-Week Survival (Random Drop): Surviving the shared weekly hour budget for 2 weeks unlocks a randomized cosmetic from the Trophy pool for that Community.
+
+3-Week Survival (Targeted Unlock): Communities can lock in a specific Trophy cosmetic they want and must survive 3 weeks of their Group Pact to claim it.
+
+B. Individual User Card Cosmetics (Global vs. Community-Specific Loadouts)
+Every user row on the Friends List and Community Leaderboards acts as a customizable User Card (supporting custom card backgrounds, borders, nameplates, and custom Nudge visual/audio packs).
+
+Purchased Card Cosmetics (Global Availability): User Card items unlocked via purchase or Premium Subscription live in the user's permanent inventory and can be equipped globally across their Friends List and any Community they join.
+
+Earned Discipline Card Cosmetics (Community-Scoped): Completing 2-week or 3-week Group Pacts also unlocks group-specific User Card borders or titles. These cannot be bought and can only be equipped inside the specific Community where they were earned.
+
+Per-Community Loadout Customization: Users can set a Default Global Card Loadout (shown on their Friends List and by default in new groups) while configuring Community-Specific Card Overrides—allowing them to flex an earned Group Pact border in one Community while showing off a paid nameplate in another.
+
+9. Anti-Cheat & The "Gone Dark" Escalation Pipeline
+To ensure trust without punishing brief technical glitches, the app enforces a strict three-stage integrity pipeline whenever data stops flowing or permissions are revoked:
+
+Stage 1 — User Warning (Hour 0): If screen time fails to sync or OS permissions are toggled off, the user receives a persistent local notification: "Your screen time isn't updating. Open the app to restore syncing before your Communities are notified."
+
+Stage 2 — Community "Gone Dark" Alert (Ignored Warning): If the user ignores the warning past the grace period, their row on Friends and Community lists turns into a static grey state, and a notification is sent to their groups: "[Name] isn't updating their screen time."
+
+Stage 3 — End-of-Day Uninstall Snitch ("Fled the Scene"): The server performs a daily silent push check. If the app detects an unregistered push token (indicating the user uninstalled the app) and the user has not reinstalled and synced by the end of the day, an automated notification alerts all Friends and Communities that the user uninstalled the app.

@@ -6,7 +6,14 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.os.Process
+import androidx.compose.ui.graphics.Color
+import com.fishforandre.brainrotwatch.domain.engine.TrendCalculator
+import com.fishforandre.brainrotwatch.domain.model.AppCategory
+import com.fishforandre.brainrotwatch.domain.model.MasterCatalog
+import com.fishforandre.brainrotwatch.domain.model.SyncIntegrityState
+import com.fishforandre.brainrotwatch.domain.model.UsageRecord
 import kotlin.math.max
 
 object DeviceUsageRepository {
@@ -48,6 +55,13 @@ object DeviceUsageRepository {
         "tv.pluto.android" to "Pluto TV",
         "com.tubitv" to "Tubi",
         "com.vimeo.android" to "Vimeo",
+        "com.spotify.music" to "Spotify",
+        "com.google.android.apps.youtube.music" to "YouTube Music",
+        "com.soundcloud.android" to "SoundCloud",
+        "com.audible.application" to "Audible",
+        "com.supercell.clashroyale" to "Clash Royale",
+        "com.supercell.brawlstars" to "Brawl Stars",
+        "com.roblox.client" to "Roblox",
         "com.android.chrome" to "Chrome",
         "org.mozilla.firefox" to "Firefox",
         "com.microsoft.emmx" to "Edge",
@@ -100,19 +114,29 @@ object DeviceUsageRepository {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
+    /**
+     * Checks if active audio is currently playing through headphones or speakers.
+     */
+    fun isAudioCurrentlyPlaying(context: Context): Boolean {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+        return audioManager.isMusicActive
+    }
+
     private fun isAttentionApp(packageManager: PackageManager, packageName: String, selfPackage: String): Boolean {
         if (packageName == selfPackage || EXCLUDED_SYSTEM_PACKAGES.contains(packageName)) return false
 
         // 1. Direct match with curated attention app list
         if (TARGET_ATTENTION_PACKAGES.contains(packageName)) return true
 
-        // 2. Android System Category fallback (Social, Video, News)
+        // 2. Android System Category fallback (Social, Video, Audio, Games, News)
         try {
             val appInfo = packageManager.getApplicationInfo(packageName, 0)
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                 when (appInfo.category) {
                     ApplicationInfo.CATEGORY_SOCIAL,
                     ApplicationInfo.CATEGORY_VIDEO,
+                    ApplicationInfo.CATEGORY_AUDIO,
+                    ApplicationInfo.CATEGORY_GAME,
                     ApplicationInfo.CATEGORY_NEWS -> return true
                 }
             }
@@ -128,6 +152,7 @@ object DeviceUsageRepository {
         fallbackSummary: String,
         avatarUrl: String? = null,
         friendCode: String = "",
+        deviceCount: Int = 1
     ): UserScreenTime {
         val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val packageManager = context.packageManager
@@ -139,44 +164,111 @@ object DeviceUsageRepository {
         val todayAppsMap = calculateInteractiveScreenTime(usageStatsManager, packageManager, todayStart, now, context.packageName)
         val yesterdayAppsMap = calculateInteractiveScreenTime(usageStatsManager, packageManager, yesterdayStart, todayStart, context.packageName)
 
-        val apps = todayAppsMap.entries
-            .map { entry ->
-                AppUsageSnapshot(
-                    name = entry.key,
-                    minutes = (entry.value / 60000L).toInt()
+        // Check baseline device activity (Touch Grass Floor: did the user unlock/use their phone at all today?)
+        val hasBaselineDeviceActivity = checkMinimumActivityFloor(usageStatsManager, todayStart, now)
+
+        val rawRecords = todayAppsMap.entries
+            .map { (pkgAndLabel, millis) ->
+                val (pkgName, cleanLabel) = pkgAndLabel
+                val screenMins = (millis / 60000L).toInt()
+                val category = MasterCatalog.inferCategory(cleanLabel)
+                val estimatedAudioMins = if (category == AppCategory.AUDIO_STREAMING) {
+                    max(screenMins, (screenMins * 1.5).toInt())
+                } else {
+                    0
+                }
+                UsageRecord(
+                    appId = pkgName,
+                    appName = cleanLabel,
+                    category = category,
+                    screenTimeMinutes = screenMins,
+                    audioTimeMinutes = estimatedAudioMins,
+                    lastSyncedEpochMillis = now,
+                    connectedDeviceCount = deviceCount
                 )
             }
-            .filter { it.minutes > 0 }
-            .sortedByDescending { it.minutes }
+            .filter { it.screenTimeMinutes > 0 || it.audioTimeMinutes > 0 }
+            .sortedByDescending { it.screenTimeMinutes }
 
-        val totalMinutes = apps.sumOf { it.minutes }
+        val totalMinutes = rawRecords.sumOf { it.screenTimeMinutes }
         val yesterdayTotalMinutes = (yesterdayAppsMap.values.sumOf { it } / 60000L).toInt()
         val deltaMinutes = totalMinutes - yesterdayTotalMinutes
-        val topMinutes = max(1, apps.firstOrNull()?.minutes ?: 1)
+        val topMinutes = max(1, rawRecords.firstOrNull()?.screenTimeMinutes ?: 1)
+
+        // Compute 7-day rolling history for TrendCalculator
+        val last7Days = (1..7).map { daysAgo ->
+            val dayStart = todayStart - (daysAgo * DAY_IN_MILLIS)
+            val dayEnd = dayStart + DAY_IN_MILLIS
+            val map = calculateFallbackUsageStats(usageStatsManager, packageManager, dayStart, dayEnd, context.packageName)
+            (map.values.sumOf { it } / 60000L).toInt()
+        }.filter { it > 0 }
+
+        val trendBadge = TrendCalculator.calculateTrend(
+            todayMinutes = totalMinutes,
+            yesterdayMinutes = yesterdayTotalMinutes,
+            last7DaysMinutes = last7Days
+        )
+
+        val apps = rawRecords.take(8).map { record ->
+            val colors = colorPalette[record.appName.length % colorPalette.size]
+            AppUsage(
+                appId = record.appId,
+                name = record.appName,
+                category = record.category,
+                minutes = record.screenTimeMinutes,
+                audioMinutes = record.audioTimeMinutes,
+                fillFraction = record.screenTimeMinutes.toFloat() / topMinutes.toFloat(),
+                accentColor = colors.first,
+                trackColor = colors.second
+            )
+        }
+
+        val syncState = if (hasUsageAccess(context)) {
+            SyncIntegrityState.Synced(lastSyncMillis = now, deviceCount = deviceCount)
+        } else {
+            SyncIntegrityState.WarningPending(failedSinceMillis = now)
+        }
 
         return UserScreenTime(
+            userId = "current_user",
             displayName = displayName,
             initials = initials,
             avatarUrl = avatarUrl,
             friendCode = friendCode,
+            deviceCount = deviceCount,
             totalMinutes = totalMinutes,
             deltaMinutes = deltaMinutes,
-            apps = apps.take(6).map { snapshot ->
-                val colors = colorPalette[snapshot.name.length % colorPalette.size]
-                AppUsage(
-                    name = snapshot.name,
-                    minutes = snapshot.minutes,
-                    fillFraction = snapshot.minutes.toFloat() / topMinutes.toFloat(),
-                    accentColor = colors.first,
-                    trackColor = colors.second
-                )
-            },
+            yesterdayMinutes = yesterdayTotalMinutes,
+            last7DaysMinutes = last7Days,
+            rolling30DayAvgMinutes = if (last7Days.isNotEmpty()) last7Days.average().toInt() else max(totalMinutes, 90),
+            apps = apps,
+            rawRecords = rawRecords,
             summary = if (totalMinutes > 0) {
-                buildSummary(totalMinutes, apps)
+                buildSummary(totalMinutes, rawRecords)
             } else {
                 fallbackSummary
-            }
+            },
+            meetsMinimumActivityFloor = hasBaselineDeviceActivity,
+            syncState = syncState,
+            trendBadge = trendBadge
         )
+    }
+
+    private fun checkMinimumActivityFloor(
+        usageStatsManager: UsageStatsManager,
+        startTimeMillis: Long,
+        endTimeMillis: Long
+    ): Boolean {
+        return try {
+            val stats = usageStatsManager.queryUsageStats(
+                UsageStatsManager.INTERVAL_DAILY,
+                startTimeMillis,
+                endTimeMillis
+            ).orEmpty()
+            stats.any { it.totalTimeInForeground > 30_000L }
+        } catch (_: Exception) {
+            true
+        }
     }
 
     /**
@@ -189,7 +281,7 @@ object DeviceUsageRepository {
         startTimeMillis: Long,
         endTimeMillis: Long,
         selfPackage: String
-    ): Map<String, Long> {
+    ): Map<Pair<String, String>, Long> {
         val packageTimeMillis = mutableMapOf<String, Long>()
         try {
             val events = usageStatsManager.queryEvents(startTimeMillis, endTimeMillis)
@@ -254,11 +346,11 @@ object DeviceUsageRepository {
             return calculateFallbackUsageStats(usageStatsManager, packageManager, startTimeMillis, endTimeMillis, selfPackage)
         }
 
-        // Map package names to clean human-friendly app labels
-        val labelMap = mutableMapOf<String, Long>()
+        val labelMap = mutableMapOf<Pair<String, String>, Long>()
         for ((pkg, millis) in packageTimeMillis) {
             val label = getCleanAppLabel(packageManager, pkg)
-            labelMap[label] = (labelMap[label] ?: 0L) + millis
+            val key = pkg to label
+            labelMap[key] = (labelMap[key] ?: 0L) + millis
         }
 
         return labelMap
@@ -270,8 +362,8 @@ object DeviceUsageRepository {
         startTimeMillis: Long,
         endTimeMillis: Long,
         selfPackage: String
-    ): Map<String, Long> {
-        val result = mutableMapOf<String, Long>()
+    ): Map<Pair<String, String>, Long> {
+        val result = mutableMapOf<Pair<String, String>, Long>()
         val statsList = usageStatsManager.queryUsageStats(
             UsageStatsManager.INTERVAL_DAILY,
             startTimeMillis,
@@ -282,7 +374,8 @@ object DeviceUsageRepository {
             val millis = stat.totalTimeInForeground
             if (millis > 0L && isAttentionApp(packageManager, stat.packageName, selfPackage)) {
                 val label = getCleanAppLabel(packageManager, stat.packageName)
-                result[label] = (result[label] ?: 0L) + millis
+                val key = stat.packageName to label
+                result[key] = (result[key] ?: 0L) + millis
             }
         }
         return result
@@ -304,9 +397,9 @@ object DeviceUsageRepository {
         }
     }
 
-    private fun buildSummary(totalMinutes: Int, apps: List<AppUsageSnapshot>): String {
-        val topThree = apps.take(3)
-            .joinToString(separator = ", ") { snapshot -> "${snapshot.minutes} min on ${snapshot.name}" }
+    private fun buildSummary(totalMinutes: Int, records: List<UsageRecord>): String {
+        val topThree = records.take(3)
+            .joinToString(separator = ", ") { record -> "${record.screenTimeMinutes} min on ${record.appName}" }
         return "$totalMinutes min of screen time today: $topThree."
     }
 
@@ -321,18 +414,13 @@ object DeviceUsageRepository {
         return calendar.timeInMillis
     }
 
-    private data class AppUsageSnapshot(
-        val name: String,
-        val minutes: Int,
-    )
-
-    private val colorPalette: List<Pair<androidx.compose.ui.graphics.Color, androidx.compose.ui.graphics.Color>> = listOf(
-        androidx.compose.ui.graphics.Color(0xFF6460FF) to androidx.compose.ui.graphics.Color(0xFFD9E7F5),
-        androidx.compose.ui.graphics.Color(0xFF23C8D7) to androidx.compose.ui.graphics.Color(0xFFD9E7F5),
-        androidx.compose.ui.graphics.Color(0xFFFF6D84) to androidx.compose.ui.graphics.Color(0xFFD9E7F5),
-        androidx.compose.ui.graphics.Color(0xFF9B6BFF) to androidx.compose.ui.graphics.Color(0xFFE8DBFF),
-        androidx.compose.ui.graphics.Color(0xFF2FC37F) to androidx.compose.ui.graphics.Color(0xFFDFF6EA),
-        androidx.compose.ui.graphics.Color(0xFFFFA24B) to androidx.compose.ui.graphics.Color(0xFFFFE7CC)
+    private val colorPalette: List<Pair<Color, Color>> = listOf(
+        Color(0xFF6460FF) to Color(0xFFD9E7F5),
+        Color(0xFF23C8D7) to Color(0xFFD9E7F5),
+        Color(0xFFFF6D84) to Color(0xFFD9E7F5),
+        Color(0xFF9B6BFF) to Color(0xFFE8DBFF),
+        Color(0xFF2FC37F) to Color(0xFFDFF6EA),
+        Color(0xFFFFA24B) to Color(0xFFFFE7CC)
     )
 
     private const val DAY_IN_MILLIS = 24L * 60L * 60L * 1000L

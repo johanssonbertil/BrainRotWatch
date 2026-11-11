@@ -10,29 +10,48 @@ import androidx.compose.ui.graphics.Color
 private val LightColorScheme = lightColorScheme(
     primary = NavyPrimary,
     onPrimary = Color.White,
+    primaryContainer = AccentLime,
+    onPrimaryContainer = NavyPrimary,
     secondary = SlateSecondary,
     onSecondary = Color.White,
+    secondaryContainer = AccentLavender,
+    onSecondaryContainer = NavyPrimary,
+    tertiaryContainer = AccentPeach,
+    onTertiaryContainer = NavyPrimary,
     background = AppBackgroundLight,
     onBackground = NavyPrimary,
     surface = CardBackground,
     onSurface = NavyPrimary,
-    surfaceVariant = CardBackground,
-    onSurfaceVariant = MutedText
+    surfaceVariant = PaperSunken,
+    onSurfaceVariant = MutedText,
+    outline = Color(0xFFCFCDC6),
+    outlineVariant = HairlineBorder,
+    error = TrendRed
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFB0B7E6),
-    onPrimary = Color(0xFF1E2040),
-    secondary = Color(0xFF9FA5C4),
-    onSecondary = Color(0xFF1E2040),
-    background = Color(0xFF101222),
-    onBackground = Color(0xFFE2E5F8),
-    surface = Color(0xFF1A1C30),
-    onSurface = Color(0xFFE2E5F8),
-    surfaceVariant = Color(0xFF1A1C30),
-    onSurfaceVariant = Color(0xFFA0A5C0)
+    primary = AccentLime,
+    onPrimary = NavyPrimary,
+    primaryContainer = AccentLime,
+    onPrimaryContainer = NavyPrimary,
+    secondary = AccentLavender,
+    onSecondary = NavyPrimary,
+    secondaryContainer = AccentLavender,
+    onSecondaryContainer = NavyPrimary,
+    tertiaryContainer = AccentPeach,
+    onTertiaryContainer = NavyPrimary,
+    background = Color(0xFF121212),
+    onBackground = Color(0xFFF2F1EC),
+    surface = Color(0xFF1C1C1E),
+    onSurface = Color(0xFFF2F1EC),
+    surfaceVariant = Color(0xFF26262A),
+    onSurfaceVariant = Color(0xFFA2A1A8),
+    outline = Color(0xFF45454B),
+    outlineVariant = Color(0xFF2E2E33),
+    error = TrendRed
 )
 
+/** Flat warm "paper" background (kept as a list so existing gradient call sites keep working). */
 val AppBackgroundGradient = listOf(
     AppBackgroundLight,
     AppBackgroundMid,

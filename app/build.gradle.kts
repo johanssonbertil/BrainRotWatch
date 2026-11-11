@@ -57,6 +57,7 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_1_8)
+        freeCompilerArgs.add("-opt-in=androidx.compose.material3.ExperimentalMaterial3Api")
     }
 }
 
@@ -83,6 +84,15 @@ dependencies {
 
     // QR Code generation
     implementation("com.google.zxing:core:3.5.3")
+
+    // CameraX for live QR Scanning
+    val cameraVersion = "1.3.4"
+    implementation("androidx.camera:camera-camera2:$cameraVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraVersion")
+    implementation("androidx.camera:camera-view:$cameraVersion")
+
+    // ML Kit Barcode Scanning
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
     // Secure Storage / KeyStore
     implementation("androidx.security:security-crypto:1.1.0")

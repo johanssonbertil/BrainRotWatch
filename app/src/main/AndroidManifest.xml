@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
@@ -55,6 +57,7 @@
                 <data android:host="brainrotwatch.app" />
                 <data android:pathPrefix="/friend" />
                 <data android:pathPrefix="/join" />
+                <data android:pathPrefix="/u" />
             </intent-filter>
 
             <intent-filter>
